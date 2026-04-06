@@ -164,7 +164,8 @@
                 stages: ["Briefing", "Conceitos", "Ajustes", "Arquivos"],
                 approved: false,
                 images: [],
-                deliveryFiles: []
+                deliveryFiles: [],
+                revisoes: [] // Novo campo de revisões
             },
             allClients: [], // Para o painel Admin
             galleryIndex: 0 // Para navegação de imagens
@@ -199,16 +200,18 @@
         // --- FETCH DADOS DO CLIENTE ---
         async function fetchClientData(emailToFetch) {
             try {
-                // Obter status do projeto e ficheiros
+                // Obter status do projeto, ficheiros e revisões
                 const docRef = doc(db, "projetos", emailToFetch);
                 const docSnap = await getDoc(docRef);
                 
                 if (docSnap.exists()) {
                     state.project.approved = docSnap.data().approved || false;
                     state.project.deliveryFiles = docSnap.data().deliveryFiles || [];
+                    state.project.revisoes = docSnap.data().revisoes || [];
                 } else {
                     state.project.approved = false;
                     state.project.deliveryFiles = [];
+                    state.project.revisoes = [];
                 }
 
                 // Obter imagens
@@ -222,6 +225,7 @@
                 console.error("Erro ao buscar dados do Firebase:", error);
                 state.project.images = [];
                 state.project.deliveryFiles = [];
+                state.project.revisoes = [];
             }
         }
 
@@ -416,11 +420,68 @@
                 }, { merge: true });
                 
                 state.project.approved = true;
-                window.renderApp();
-                window.showToast('Projeto Aprovado! Ficheiros finais desbloqueados na aba "Arquivos".', 'success');
+                window.showToast('Projeto Aprovado! Ficheiros finais desbloqueados.', 'success');
+                // Redirecionamento automático após aprovar
+                window.changeTab('arquivos');
             } catch (error) {
                 console.error(error);
                 window.showToast('Erro ao aprovar projeto. Tente novamente.', 'error');
+            }
+        }
+
+        // --- LÓGICA DE REVISÕES / AJUSTES ---
+        window.enviarRevisao = async function() {
+            const textarea = document.getElementById('texto-revisao');
+            if(!textarea) return;
+            
+            const texto = textarea.value.trim();
+            if(!texto) {
+                window.showToast('Escreva a sua solicitação antes de enviar.', 'error');
+                return;
+            }
+
+            // Descobrir qual o email do cliente (Admin envia para o pesquisado, Cliente envia para o próprio)
+            let clientEmail = '';
+            if(state.isAdmin) {
+                const searchInput = document.getElementById('target-client-email');
+                if(searchInput && searchInput.value) {
+                    clientEmail = searchInput.value.trim().toLowerCase();
+                } else {
+                    window.showToast('Pesquise um cliente primeiro para adicionar uma mensagem.', 'error');
+                    return;
+                }
+            } else {
+                clientEmail = state.user.email;
+            }
+
+            window.showToast("A enviar mensagem...", "info");
+            
+            const novaRevisao = {
+                texto: texto,
+                data: new Date().toISOString(),
+                autor: state.isAdmin ? 'Estúdio' : 'Cliente'
+            };
+
+            try {
+                const docRef = doc(db, "projetos", clientEmail);
+                const docSnap = await getDoc(docRef);
+                
+                let revisoes = [];
+                if(docSnap.exists() && docSnap.data().revisoes) {
+                    revisoes = docSnap.data().revisoes;
+                }
+                
+                revisoes.push(novaRevisao);
+
+                await setDoc(docRef, { revisoes: revisoes, email: clientEmail }, { merge: true });
+                
+                state.project.revisoes = revisoes;
+                textarea.value = '';
+                window.renderApp();
+                window.showToast('Mensagem enviada com sucesso.', 'success');
+            } catch (error) {
+                console.error(error);
+                window.showToast('Erro ao enviar mensagem.', 'error');
             }
         }
 
@@ -692,8 +753,58 @@
             switch(state.currentTab) {
                 case 'dashboard': container.innerHTML = mobileTitleHTML + getOverviewContent(); break;
                 case 'arquivos': container.innerHTML = mobileTitleHTML + getFilesContent(); break;
-                case 'revisoes': container.innerHTML = mobileTitleHTML + `<div class="text-center py-16 md:py-24 px-4 bg-white dark:bg-dark-800/30 rounded-2xl border border-zinc-200 dark:border-dark-700/50 shadow-sm dark:shadow-none"><i class="ph ph-paint-brush text-5xl md:text-6xl text-zinc-300 dark:text-zinc-700 mb-4"></i><h3 class="text-lg md:text-xl text-zinc-900 dark:text-white font-medium mb-2">Sem revisões pendentes</h3><p class="text-sm text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto">A sua etapa atual aguarda ação na aba Visão Geral.</p></div>`; break;
+                case 'revisoes': container.innerHTML = mobileTitleHTML + getRevisoesContent(); break;
             }
+        }
+
+        function getRevisoesContent() {
+            let listaRevisoesHTML = '';
+            if(state.project.revisoes && state.project.revisoes.length > 0) {
+                listaRevisoesHTML = state.project.revisoes.map(rev => {
+                    const isClient = rev.autor === 'Cliente';
+                    return `
+                        <div class="mb-4 p-4 rounded-2xl ${isClient ? 'bg-zinc-100 dark:bg-dark-800 ml-auto w-[90%] md:w-[75%]' : 'bg-brand-50 dark:bg-brand-500/10 mr-auto w-[90%] md:w-[75%]'} border border-zinc-200 dark:border-dark-700 shadow-sm">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-bold ${isClient ? 'text-zinc-700 dark:text-zinc-300' : 'text-brand-600 dark:text-brand-400'}"><i class="ph-fill ${isClient ? 'ph-user' : 'ph-bezier-curve'}"></i> ${rev.autor}</span>
+                                <span class="text-[10px] font-medium text-zinc-400 dark:text-zinc-500">${new Date(rev.data).toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            <p class="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap">${rev.texto}</p>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                listaRevisoesHTML = `
+                    <div class="text-center py-12">
+                        <i class="ph ph-chat-circle-dots text-4xl text-zinc-300 dark:text-zinc-600 mb-2"></i>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Nenhum ajuste solicitado ainda.</p>
+                    </div>
+                `;
+            }
+
+            const inputArea = `
+                <div class="mt-6 pt-6 border-t border-zinc-200 dark:border-dark-700">
+                    <label class="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Novo Ajuste / Mensagem</label>
+                    <textarea id="texto-revisao" rows="4" class="w-full bg-white dark:bg-dark-900 border border-zinc-300 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl p-4 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all resize-none shadow-sm" placeholder="Escreva aqui detalhadamente o que deseja ajustar..."></textarea>
+                    <button onclick="window.enviarRevisao()" class="mt-4 w-full bg-zinc-900 dark:bg-brand-500 text-white font-medium py-3.5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 hover:bg-zinc-800 dark:hover:bg-brand-600 shadow-lg">
+                        <i class="ph-fill ph-paper-plane-right text-lg"></i> Enviar Solicitação
+                    </button>
+                </div>
+            `;
+
+            return `
+                <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 mb-6 relative">
+                    <h3 class="text-lg md:text-xl font-bold text-zinc-900 dark:text-white mb-2 flex items-center gap-2">
+                        <i class="ph-fill ph-chats-circle text-brand-500"></i> Solicitações de Ajuste
+                    </h3>
+                    ${state.isAdmin ? `<p class="text-xs text-brand-500 font-medium mb-6 bg-brand-50 dark:bg-brand-500/10 inline-block px-2 py-1 rounded">A visualizar chat do cliente selecionado no momento.</p>` : '<p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Deixe as suas sugestões ou pedidos de alteração. Iremos analisar o mais rapidamente possível.</p>'}
+                    
+                    <div class="max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                        ${listaRevisoesHTML}
+                    </div>
+                    
+                    ${inputArea}
+                </div>
+            `;
         }
 
         function getOverviewContent() {
@@ -744,13 +855,50 @@
                             <h4 class="text-sm font-bold text-zinc-900 dark:text-white mb-3 uppercase tracking-wider flex items-center gap-2">
                                 <i class="ph-fill ph-check-circle text-brand-500"></i> Status dos Projetos
                             </h4>
-                            <div class="overflow-y-auto flex-1 pr-2">
+                            <div class="overflow-y-auto flex-1 pr-2 custom-scrollbar">
                                 ${listaAprovacoes}
                             </div>
                         </div>
                     </div>
                 `;
             }
+
+            // Ocultar blocos de aprovação se já estiver aprovado
+            const progressValue = state.project.approved ? 100 : state.project.progress;
+            const currentStageClass = state.project.approved ? state.project.stages.length - 1 : state.project.currentStage; 
+
+            // Balão Informativo / Apresentação
+            let balaoInformativo = `
+                <div class="glass-panel border-l-4 border-brand-500 rounded-2xl p-6 md:p-8 mb-8 bg-brand-50/60 dark:bg-brand-900/10 shadow-sm relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                        <i class="ph-fill ph-confetti text-8xl text-brand-500"></i>
+                    </div>
+                    <h4 class="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white mb-3 flex items-center gap-2">
+                        <i class="ph-fill ph-party-popper text-brand-500 text-2xl"></i> Parabéns, o seu Logótipo está pronto!
+                    </h4>
+                    <p class="text-sm md:text-base text-zinc-700 dark:text-zinc-300 mb-5 leading-relaxed">
+                        Você vai receber a marca vetorizada, com todos os ficheiros em alta qualidade e máxima resolução, nos formatos <strong>PNG, PDF e CDR (CorelDRAW)</strong> – compatíveis com programas profissionais utilizados por gráficas para produção.
+                    </p>
+                    <p class="text-sm md:text-base font-semibold text-zinc-800 dark:text-zinc-200 mb-3">
+                        Estes ficheiros permitem a aplicação da sua identidade visual em diversos materiais, como:
+                    </p>
+                    <ul class="grid grid-cols-2 md:grid-cols-3 gap-y-2 gap-x-4 text-sm md:text-base text-zinc-700 dark:text-zinc-300 mb-6">
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Cartões de visita</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Banners</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Uniformes</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Fachadas</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Adesivos</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Redes sociais</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Camisas</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Cartazes</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Vídeos</li>
+                        <li class="flex items-center gap-2"><i class="ph-fill ph-check-circle text-brand-500"></i> Websites</li>
+                    </ul>
+                    <p class="text-sm md:text-base text-zinc-700 dark:text-zinc-300 leading-relaxed bg-white/60 dark:bg-dark-900/40 p-4 rounded-xl border border-white/40 dark:border-dark-700/50">
+                        <i class="ph-fill ph-info text-brand-500 mr-1"></i> A sua marca está pronta para ser impressa com perfeição e utilizada em qualquer tipo de media, digital ou física. <strong>Após aprovação no botão abaixo, serão libertados todos os seus ficheiros CDR vetor alta qualidade para produção.</strong>
+                    </p>
+                </div>
+            `;
 
             let gridImagens = '';
             if (state.project.images && state.project.images.length > 0) {
@@ -777,10 +925,6 @@
                 `;
             }
 
-            // Ocultar blocos de aprovação se já estiver aprovado
-            const progressValue = state.project.approved ? 100 : state.project.progress;
-            const currentStageClass = state.project.approved ? state.project.stages.length - 1 : state.project.currentStage; 
-
             let decisionBlock = '';
             if(state.project.approved) {
                 decisionBlock = `
@@ -789,18 +933,22 @@
                             <i class="ph-fill ph-check-circle text-3xl"></i>
                         </div>
                         <h5 class="font-bold text-emerald-700 dark:text-emerald-400 text-lg">Projeto Aprovado!</h5>
-                        <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-2">Pode transferir os seus ficheiros finais na aba <b>Arquivos</b>.</p>
+                        <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-2">Os seus ficheiros finais de alta qualidade encontram-se disponíveis na aba <b>Arquivos</b>.</p>
+                        <button onclick="window.changeTab('arquivos')" class="mt-4 px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl active:scale-95 transition-all shadow-md flex items-center gap-2">
+                            <i class="ph ph-folder"></i> Ir para Meus Arquivos
+                        </button>
                     </div>
                 `;
             } else {
                 decisionBlock = `
-                    <div class="border border-brand-200 dark:border-brand-500/30 rounded-2xl md:rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center text-center bg-brand-50 dark:bg-brand-500/5 mt-8 shadow-sm dark:shadow-lg">
-                        <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-brand-100 dark:bg-brand-500/20 flex items-center justify-center mb-4 border border-brand-200 dark:border-brand-500/30">
+                    <div class="border border-brand-200 dark:border-brand-500/30 rounded-2xl md:rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center text-center bg-brand-50 dark:bg-brand-500/5 mt-8 shadow-sm dark:shadow-lg relative overflow-hidden">
+                        <div class="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent pointer-events-none"></div>
+                        <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-brand-100 dark:bg-brand-500/20 flex items-center justify-center mb-4 border border-brand-200 dark:border-brand-500/30 relative z-10">
                             <i class="ph-fill ph-thumbs-up text-2xl md:text-3xl text-brand-600 dark:text-brand-500"></i>
                         </div>
-                        <h5 class="font-bold text-zinc-900 dark:text-white text-lg md:text-xl mb-2">O que achou do resultado?</h5>
-                        <p class="text-sm md:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md">Após visualizar todos os itens acima, caso o projeto atenda às suas expectativas, clique em aprovar para iniciarmos a preparação dos seus ficheiros finais.</p>
-                        <div class="flex flex-col sm:flex-row gap-3 md:gap-4 w-full max-w-lg justify-center">
+                        <h5 class="font-bold text-zinc-900 dark:text-white text-lg md:text-xl mb-2 relative z-10">O que achou do resultado?</h5>
+                        <p class="text-sm md:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md relative z-10">Após visualizar todos os itens acima, caso o projeto atenda às suas expectativas, clique em aprovar para aceder imediatamente aos seus ficheiros finais.</p>
+                        <div class="flex flex-col sm:flex-row gap-3 md:gap-4 w-full max-w-lg justify-center relative z-10">
                             <button onclick="window.aprovarProjeto()" class="w-full sm:w-auto px-8 py-4 bg-brand-500 text-white text-sm md:text-base font-bold rounded-xl active:scale-95 transition-all shadow-[0_0_20px_rgba(20,184,166,0.3)] hover:shadow-[0_0_30px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2">
                                 <i class="ph ph-check-circle text-xl"></i> Aprovar Projeto
                             </button>
@@ -868,12 +1016,11 @@
                     </div>
                 </div>
 
+                ${balaoInformativo}
+
                 <div class="mb-4">
                     <div class="flex items-center justify-between mb-4 md:mb-6">
-                        <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-presentation-chart text-brand-500"></i> Apresentação do Projeto</h4>
-                        ${state.project.approved 
-                            ? '<span class="text-[10px] md:text-xs font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-md uppercase">Avaliação Concluída</span>'
-                            : '<span class="text-[10px] md:text-xs font-bold text-brand-600 dark:text-brand-500 bg-brand-50 dark:bg-brand-500/10 px-2.5 py-1 rounded-md uppercase">Aguardar Avaliação</span>'}
+                        <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-image text-brand-500"></i> Galeria da Marca</h4>
                     </div>
                     
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 mb-10">
@@ -905,7 +1052,7 @@
                             </div>
                             <div class="relative md:col-span-1">
                                 <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase">Nome Ficheiro</label>
-                                <input type="text" id="delivery-name" required placeholder="Ex: Logotipo_Final.zip" class="w-full bg-white dark:bg-dark-900 border border-zinc-300 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 px-4 focus:outline-none focus:border-brand-500 text-sm">
+                                <input type="text" id="delivery-name" required placeholder="Ex: Pacote_CDR_AltaQualidade.zip" class="w-full bg-white dark:bg-dark-900 border border-zinc-300 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 px-4 focus:outline-none focus:border-brand-500 text-sm">
                             </div>
                             <div class="relative md:col-span-1">
                                 <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase">Link Download (Drive)</label>
@@ -977,9 +1124,6 @@
                                 <h3 class="text-lg md:text-xl font-bold text-zinc-900 dark:text-white mb-0.5">Pacote de Entrega</h3>
                                 <p class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400">Ficheiros finais libertados após aprovação visual.</p>
                             </div>
-                            <button class="w-full md:w-auto bg-zinc-50 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 text-zinc-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 opacity-60 cursor-not-allowed" title="Transferência Automática Em Breve">
-                                <i class="ph ph-download-simple text-lg"></i> Transferir Tudo
-                            </button>
                         </div>
                         <div class="flex flex-col gap-2.5">
                             ${filesListHTML}
