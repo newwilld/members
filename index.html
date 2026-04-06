@@ -17,7 +17,7 @@
     
     <script>
         tailwind.config = {
-            darkMode: 'class', // Habilita a alternância de tema via classe 'dark' no HTML
+            darkMode: 'class', 
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
@@ -38,7 +38,6 @@
     </script>
     <style>
         body {
-            /* Fallback colors that Tailwind will override */
             background-color: #fafafa;
             color: #18181b;
             -webkit-font-smoothing: antialiased;
@@ -46,7 +45,6 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
         
-        /* Glassmorphism Dinâmico (Light e Dark) */
         .glass-panel {
             background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(16px);
@@ -63,7 +61,6 @@
         .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
         .pt-safe { padding-top: env(safe-area-inset-top); }
 
-        /* Scrollbar Dinâmica */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
@@ -75,7 +72,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Toasts Dinâmicos */
         #toast-container {
             position: fixed;
             bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
@@ -127,7 +123,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDUWJKs_LspaznsFak_WsSmYNQobNBiflU",
@@ -142,8 +139,11 @@
         const firebaseApp = initializeApp(firebaseConfig);
         const auth = getAuth(firebaseApp);
         const db = getFirestore(firebaseApp);
+        const storage = getStorage(firebaseApp);
 
-        // Inicialização do Tema
+        // DEFINA AQUI O E-MAIL DO ADMINISTRADOR
+        const ADMIN_EMAIL = "admin@empresa.com"; 
+
         const savedTheme = localStorage.getItem('theme') || 'light';
         if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark');
@@ -152,31 +152,39 @@
 
         const state = {
             isLoggedIn: false,
+            isAdmin: false,
             currentTab: 'dashboard',
             theme: savedTheme,
-            user: { name: "Cliente", company: "", email: "" },
+            user: { name: "", email: "" },
             project: {
                 name: "Identidade Visual",
                 deadline: "15/05/2026",
                 progress: 65,
                 currentStage: 2,
-                stages: ["Briefing", "Conceitos", "Ajustes", "Arquivos"]
+                stages: ["Briefing", "Conceitos", "Ajustes", "Arquivos"],
+                images: [] // Array dinâmico que receberá as imagens reais
             }
         };
 
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
                 state.isLoggedIn = true;
                 state.user.email = user.email;
                 state.user.name = user.email.split('@')[0];
+                state.isAdmin = (user.email === ADMIN_EMAIL);
+                
+                // Se for cliente, tenta buscar as imagens dele no banco de dados (Simulação de fetch)
+                // Se fosse buscar real: await buscarImagensDoFirestore(user.email);
+                
                 window.renderApp();
             } else {
                 state.isLoggedIn = false;
+                state.isAdmin = false;
+                state.project.images = [];
                 window.renderApp();
             }
         });
 
-        // Toggle Tema
         window.toggleTheme = function() {
             state.theme = state.theme === 'light' ? 'dark' : 'light';
             localStorage.setItem('theme', state.theme);
@@ -188,7 +196,7 @@
                 document.documentElement.classList.remove('dark');
                 document.querySelector('meta[name="theme-color"]').setAttribute('content', '#fafafa');
             }
-            window.renderApp(); // Re-renderiza para atualizar os ícones
+            window.renderApp(); 
         }
 
         window.showToast = function(message, type = 'success') {
@@ -221,7 +229,6 @@
             
             return `
                 <div class="flex-1 flex items-center justify-center p-4 relative w-full min-h-[100dvh]">
-                    <!-- Botão de Tema no Login -->
                     <button onclick="window.toggleTheme()" class="absolute top-4 right-4 md:top-8 md:right-8 w-12 h-12 rounded-full glass-panel flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-brand-500 transition-colors z-20 shadow-sm">
                         <i class="ph-fill ${themeIcon} text-xl"></i>
                     </button>
@@ -237,7 +244,7 @@
                                 <i class="ph ph-bezier-curve text-white text-2xl sm:text-3xl"></i>
                             </div>
                             <h1 class="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Portal do Cliente</h1>
-                            <p class="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-2">Acesse os arquivos do seu projeto.</p>
+                            <p class="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-2">Acesse com o e-mail do cliente ou <br/><span class="font-medium text-brand-500">${ADMIN_EMAIL}</span> para administrar.</p>
                         </div>
 
                         <form id="login-form" class="space-y-4 sm:space-y-5">
@@ -257,7 +264,7 @@
                             </div>
                             
                             <button type="submit" id="btn-login" class="w-full bg-brand-500 text-white font-medium py-3.5 rounded-xl transition-all active:scale-95 shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 mt-2 sm:mt-4 text-sm sm:text-base hover:bg-brand-600">
-                                Entrar na Área Segura <i class="ph ph-arrow-right font-bold"></i>
+                                Entrar no Portal <i class="ph ph-arrow-right font-bold"></i>
                             </button>
                         </form>
                     </div>
@@ -312,12 +319,77 @@
             }
         }
 
-        window.verConceito = function() {
-            window.showToast('Simulação: Abrindo galeria em tela cheia...', 'info');
+        window.verConceitoFull = function(url) {
+            // Expande a imagem clicada
+            const container = document.getElementById('toast-container');
+            const modal = document.createElement('div');
+            modal.className = "fixed inset-0 z-[999] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer fade-in";
+            modal.innerHTML = `<img src="${url}" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"><div class="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"><i class="ph ph-x text-xl"></i></div>`;
+            modal.onclick = () => modal.remove();
+            document.body.appendChild(modal);
+        }
+
+        // === LÓGICA DE UPLOAD PARA O ADMINISTRADOR ===
+        window.handleImageUpload = async function(event) {
+            const files = Array.from(event.target.files);
+            if(files.length === 0) return;
+
+            const clientEmail = document.getElementById('target-client-email').value;
+            if(!clientEmail) {
+                window.showToast('Por favor, informe o e-mail do cliente destino.', 'error');
+                return;
+            }
+
+            // Ordenação Alfanumérica Avançada (Ex: 1, 2, 10, A, B)
+            files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+            window.showToast(`Processando e ordenando ${files.length} imagens...`, 'info');
+            const btnUpload = document.getElementById('btn-upload-label');
+            btnUpload.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-lg"></i> Enviando...';
+            btnUpload.classList.add('opacity-70', 'cursor-not-allowed');
+
+            try {
+                const newImages = [];
+                // Para o Canvas funcionar perfeitamente sem risco de regras do Firebase bloquearem, 
+                // criamos as URLs locais para a sessão. Num app real, você faria o upload via Firebase Storage.
+                
+                for (let file of files) {
+                    // Lógica para ler e exibir localmente
+                    const reader = new FileReader();
+                    const dataUrl = await new Promise(resolve => {
+                        reader.onload = e => resolve(e.target.result);
+                        reader.readAsDataURL(file);
+                    });
+                    newImages.push({ name: file.name, url: dataUrl });
+
+                    // -- LÓGICA FIREBASE REAL (Pronta para uso quando o Storage estiver configurado) --
+                    /* const storageRef = ref(storage, \`clientes/\${clientEmail}/apresentacao/\${file.name}\`);
+                    await uploadBytes(storageRef, file);
+                    const downloadURL = await getDownloadURL(storageRef);
+                    newImages.push({ name: file.name, url: downloadURL }); 
+                    */
+                }
+
+                // Salva no estado para renderizar imediatamente
+                state.project.images = newImages; 
+                
+                // Exemplo de como você salvaria isso no Firestore:
+                // await setDoc(doc(db, "projetos", clientEmail), { images: newImages }, { merge: true });
+
+                window.renderApp();
+                window.showToast('Imagens adicionadas com sucesso!', 'success');
+            } catch (error) {
+                console.error(error);
+                window.showToast('Ocorreu um erro no upload.', 'error');
+            } finally {
+                btnUpload.innerHTML = '<i class="ph ph-upload-simple text-lg"></i> Adicionar Imagens';
+                btnUpload.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
         }
 
         function getDashboardTemplate() {
             const themeIcon = state.theme === 'light' ? 'ph-moon' : 'ph-sun';
+            const badgeAdmin = state.isAdmin ? `<span class="bg-brand-500 text-white text-[9px] px-1.5 py-0.5 rounded ml-2 font-bold uppercase tracking-wider">Admin</span>` : '';
 
             return `
                 <nav class="fixed bottom-0 w-full md:w-64 md:h-[100dvh] bg-white dark:bg-dark-900 md:border-r border-t md:border-t-0 border-zinc-200 dark:border-dark-700 z-50 flex flex-row md:flex-col justify-between md:justify-start pb-safe md:pb-0 transition-colors">
@@ -343,7 +415,7 @@
                                 <span class="text-xs font-bold text-zinc-600 dark:text-zinc-300 group-hover:text-brand-500">${state.user.name.charAt(0).toUpperCase()}</span>
                             </div>
                             <div class="flex-1 overflow-hidden">
-                                <p class="text-sm font-medium text-zinc-900 dark:text-white truncate">${state.user.name}</p>
+                                <p class="text-sm font-medium text-zinc-900 dark:text-white truncate flex items-center">${state.user.name} ${badgeAdmin}</p>
                                 <p class="text-xs text-zinc-500 truncate group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors">Sair da conta</p>
                             </div>
                             <i class="ph ph-sign-out text-zinc-400 dark:text-zinc-500 group-hover:text-red-500 dark:group-hover:text-red-400"></i>
@@ -359,7 +431,7 @@
                                 <span class="text-[10px] font-bold text-zinc-700 dark:text-zinc-300">${state.user.name.charAt(0).toUpperCase()}</span>
                             </div>
                             <div class="flex flex-col">
-                                <span class="text-xs font-semibold text-zinc-900 dark:text-white leading-tight">Olá, ${state.user.name.split('.')[0]}</span>
+                                <span class="text-xs font-semibold text-zinc-900 dark:text-white leading-tight flex items-center gap-1">Olá, ${state.user.name.split('.')[0]} ${badgeAdmin}</span>
                                 <span class="text-[10px] text-red-500 dark:text-red-400">Sair</span>
                             </div>
                         </div>
@@ -370,18 +442,15 @@
                         </div>
 
                         <div class="flex items-center gap-2 md:gap-4">
-                            <!-- Botão Alternar Tema (Dashboard) -->
                             <button onclick="window.toggleTheme()" class="w-10 h-10 rounded-full bg-zinc-100 md:bg-transparent dark:bg-dark-800 dark:md:bg-transparent border border-transparent md:border-zinc-200 dark:md:border-dark-700 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-white active:scale-90 transition-all" title="Alternar Tema">
                                 <i class="ph-fill ${themeIcon} text-lg"></i>
                             </button>
 
-                            <!-- Botão Notificação -->
                             <button onclick="window.showToast('Sem novas notificações.')" class="w-10 h-10 rounded-full bg-zinc-100 md:bg-transparent dark:bg-dark-800 dark:md:bg-transparent border border-transparent md:border-zinc-200 dark:md:border-dark-700 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-white active:scale-90 transition-all relative">
                                 <i class="ph ph-bell text-lg"></i>
                                 <span class="absolute top-2.5 right-2.5 w-2 h-2 bg-brand-500 rounded-full border border-white dark:border-dark-800"></span>
                             </button>
                             
-                            <!-- WhatsApp -->
                             <a href="#" class="flex items-center justify-center gap-2 text-sm font-medium text-brand-600 dark:text-white bg-brand-50 dark:bg-brand-500/10 hover:bg-brand-100 dark:hover:bg-brand-500/20 px-3 md:px-4 py-2 md:py-2.5 rounded-full border border-brand-200 dark:border-brand-500/20 active:scale-95 transition-all">
                                 <i class="ph-fill ph-whatsapp-logo text-brand-500 text-lg"></i>
                                 <span class="hidden md:block">Falar com Designer</span>
@@ -397,12 +466,9 @@
         function getNavButton(id, label, icon) {
             const isActive = state.currentTab === id;
             const baseClass = "flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 py-2 md:py-3.5 px-1 md:px-4 rounded-xl transition-all md:w-full select-none";
-            
-            // Classes dinâmicas para Light / Dark Mode
             const activeClass = isActive 
                 ? "text-brand-600 bg-brand-50 md:border md:border-brand-200 dark:text-brand-500 dark:bg-brand-500/10 dark:md:border-brand-500/20" 
                 : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:text-zinc-500 dark:hover:text-zinc-300 dark:active:bg-dark-800";
-            
             const iconClass = isActive ? "ph-fill" : "";
 
             return `
@@ -421,12 +487,7 @@
             void container.offsetWidth;
             container.classList.add('fade-in');
 
-            const titles = {
-                'dashboard': 'Visão Geral do Projeto',
-                'arquivos': 'Meus Arquivos',
-                'revisoes': 'Centro de Revisões'
-            };
-            
+            const titles = { 'dashboard': 'Visão Geral do Projeto', 'arquivos': 'Meus Arquivos', 'revisoes': 'Centro de Revisões' };
             if(headerTitleDesk) headerTitleDesk.innerText = titles[state.currentTab];
 
             let mobileTitleHTML = `<h2 class="text-xl font-bold text-zinc-900 dark:text-white mb-4 md:hidden">${titles[state.currentTab]}</h2>`;
@@ -439,24 +500,66 @@
         }
 
         function getOverviewContent() {
-            let placeholdersImagens = '';
-            for(let i = 1; i <= 24; i++) {
-                placeholdersImagens += `
-                    <div class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group cursor-pointer aspect-square relative transition-transform hover:scale-[1.02]" onclick="window.verConceito()">
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <i class="ph ph-image text-3xl text-zinc-300 dark:text-dark-600"></i>
+            
+            // --- BLOCO ADMINISTRADOR (Visível apenas para o E-mail Admin) ---
+            let adminUploadUI = '';
+            if (state.isAdmin) {
+                adminUploadUI = `
+                    <div class="glass-panel border border-brand-500/30 rounded-2xl p-5 md:p-6 mb-8 bg-brand-50 dark:bg-brand-500/10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="ph-fill ph-crown text-brand-500 text-xl"></i>
+                            <h4 class="text-lg font-bold text-zinc-900 dark:text-white">Painel do Administrador</h4>
                         </div>
-                        <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span class="text-[10px] md:text-xs text-white font-medium">Imagem ${i}</span>
-                        </div>
-                        <div class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <i class="ph ph-arrows-out text-white text-xs"></i>
+                        <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-5">Faça o upload de múltiplas imagens para a apresentação. O sistema as organizará numericamente e alfabeticamente de forma automática.</p>
+                        
+                        <div class="flex flex-col md:flex-row gap-4 items-end">
+                            <div class="flex-1 w-full relative">
+                                <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">E-mail do Cliente (Destino)</label>
+                                <i class="ph ph-user absolute left-4 bottom-3.5 text-zinc-400 dark:text-zinc-500 text-lg"></i>
+                                <input type="email" id="target-client-email" placeholder="cliente@email.com" class="w-full bg-white dark:bg-dark-900 border border-zinc-300 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 pl-11 pr-4 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-sm shadow-sm dark:shadow-none">
+                            </div>
+                            
+                            <label for="image-upload-input" id="btn-upload-label" class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white w-full md:w-auto px-6 py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-brand-500/20 whitespace-nowrap">
+                                <i class="ph ph-upload-simple text-lg"></i> Adicionar Imagens
+                            </label>
+                            <!-- Input File Escondido, aceita múltiplos arquivos -->
+                            <input type="file" id="image-upload-input" multiple accept="image/*" class="hidden" onchange="window.handleImageUpload(event)">
                         </div>
                     </div>
                 `;
             }
 
+            // --- GRID DE IMAGENS ---
+            let gridImagens = '';
+            if (state.project.images && state.project.images.length > 0) {
+                // Se houver imagens carregadas no state
+                state.project.images.forEach((img, index) => {
+                    gridImagens += `
+                        <div class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group cursor-pointer aspect-square relative transition-transform hover:scale-[1.02] shadow-sm" onclick="window.verConceitoFull('${img.url}')">
+                            <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover">
+                            <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span class="text-[10px] md:text-xs text-white font-medium truncate w-full">${img.name}</span>
+                            </div>
+                            <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                                <i class="ph ph-arrows-out text-white text-xs"></i>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                // Estado Vazio (Placeholders indicando onde as imagens ficarão)
+                gridImagens = `
+                    <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-5 text-center py-12 md:py-20 border-2 border-dashed border-zinc-200 dark:border-dark-700 rounded-2xl">
+                        <i class="ph ph-image text-4xl text-zinc-300 dark:text-dark-600 mb-3"></i>
+                        <p class="text-zinc-500 dark:text-zinc-400 font-medium">As imagens da apresentação aparecerão aqui.</p>
+                        ${state.isAdmin ? '<p class="text-xs text-brand-500 mt-2">Use o painel acima para enviar as imagens.</p>' : ''}
+                    </div>
+                `;
+            }
+
             return `
+                ${adminUploadUI} <!-- Injecão do Painel Admin, se autorizado -->
+
                 <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 mb-6 md:mb-8 relative overflow-hidden">
                     <div class="absolute -top-10 -right-10 w-48 h-48 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
                     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 mb-8 relative z-10">
@@ -489,7 +592,6 @@
                             let isPast = index < state.project.currentStage;
                             let isCurrent = index === state.project.currentStage;
                             
-                            // Adaptação das cores da Timeline para Light/Dark
                             let bgClass = isPast 
                                 ? "bg-brand-50 border-brand-500 text-brand-600 dark:bg-brand-500/20 dark:text-brand-500" 
                                 : isCurrent 
@@ -518,8 +620,9 @@
                     </div>
                     <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Confira abaixo todos os entregáveis e aplicações criadas para a sua nova marca. Role até o final para aprovar.</p>
                     
+                    <!-- GALERIA RENDERIZADA DINAMICAMENTE -->
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 mb-10">
-                        ${placeholdersImagens}
+                        ${gridImagens}
                     </div>
                     
                     <div class="border border-brand-200 dark:border-brand-500/30 rounded-2xl md:rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center text-center bg-brand-50 dark:bg-brand-500/5 mt-8 shadow-sm dark:shadow-lg">
