@@ -772,10 +772,17 @@
             if(state.project.revisoes && state.project.revisoes.length > 0) {
                 listaRevisoesHTML = state.project.revisoes.map(rev => {
                     const isClient = rev.autor === 'Cliente';
+                    
+                    // Correção automática para mensagens antigas salvas como "Estúdio" ou "WaComercial" na Base de Dados
+                    let nomeAutor = rev.autor;
+                    if(nomeAutor === 'Estúdio' || nomeAutor === 'WaComercial') {
+                        nomeAutor = 'Wa Comercial';
+                    }
+
                     return `
                         <div class="mb-4 p-4 rounded-2xl ${isClient ? 'bg-zinc-100 dark:bg-dark-800 ml-auto w-[90%] md:w-[75%]' : 'bg-brand-50 dark:bg-brand-500/10 mr-auto w-[90%] md:w-[75%]'} border border-zinc-200 dark:border-dark-700 shadow-sm">
                             <div class="flex justify-between items-center mb-2">
-                                <span class="text-xs font-bold ${isClient ? 'text-zinc-700 dark:text-zinc-300' : 'text-brand-600 dark:text-brand-400'}"><i class="ph-fill ${isClient ? 'ph-user' : 'ph-bezier-curve'}"></i> ${rev.autor}</span>
+                                <span class="text-xs font-bold ${isClient ? 'text-zinc-700 dark:text-zinc-300' : 'text-brand-600 dark:text-brand-400'}"><i class="ph-fill ${isClient ? 'ph-user' : 'ph-bezier-curve'}"></i> ${nomeAutor}</span>
                                 <span class="text-[10px] font-medium text-zinc-400 dark:text-zinc-500">${new Date(rev.data).toLocaleString('pt-PT', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
                             </div>
                             <p class="text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap">${rev.texto}</p>
