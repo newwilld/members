@@ -159,6 +159,9 @@
             project: {
                 name: "Identidade Visual",
                 deadline: "15/05/2026",
+                progress: 65,
+                currentStage: 2,
+                stages: ["Briefing", "Conceitos", "Ajustes", "Arquivos"],
                 approved: false,
                 images: [],
                 deliveryFiles: []
@@ -775,8 +778,8 @@
             }
 
             // Ocultar blocos de aprovação se já estiver aprovado
-            const progressValue = state.project.approved ? 100 : 65;
-            const currentStageClass = state.project.approved ? 3 : 2; 
+            const progressValue = state.project.approved ? 100 : state.project.progress;
+            const currentStageClass = state.project.approved ? state.project.stages.length - 1 : state.project.currentStage; 
 
             let decisionBlock = '';
             if(state.project.approved) {
