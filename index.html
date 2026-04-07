@@ -165,7 +165,8 @@
                 approved: false,
                 images: [],
                 deliveryFiles: [],
-                revisoes: [] 
+                revisoes: [],
+                downloadedImages: [] // Novo campo para rastrear downloads das imagens
             },
             allClients: [], // Para o painel Admin
             galleryIndex: 0, // Para navegação de imagens
@@ -209,10 +210,12 @@
                     state.project.approved = docSnap.data().approved || false;
                     state.project.deliveryFiles = docSnap.data().deliveryFiles || [];
                     state.project.revisoes = docSnap.data().revisoes || [];
+                    state.project.downloadedImages = docSnap.data().downloadedImages || [];
                 } else {
                     state.project.approved = false;
                     state.project.deliveryFiles = [];
                     state.project.revisoes = [];
+                    state.project.downloadedImages = [];
                 }
 
                 // Obter imagens
@@ -227,6 +230,7 @@
                 state.project.images = [];
                 state.project.deliveryFiles = [];
                 state.project.revisoes = [];
+                state.project.downloadedImages = [];
             }
         }
 
@@ -329,10 +333,61 @@
             window.renderApp();
         }
 
-        // --- GALERIA DE IMAGENS (SWIPE E TECLADO) ---
+        // --- GALERIA DE IMAGENS E DOWNLOAD (SWIPE E TECLADO) ---
         window.verConceitoFull = function(index) {
             state.galleryIndex = index;
             renderGalleryModal();
+        }
+
+        window.baixarImagemAtual = async function(index) {
+            const img = state.project.images[index];
+            if(!img) return;
+
+            // 1. Iniciar o Download Fisicamente no dispositivo
+            const link = document.createElement('a');
+            link.href = img.url;
+            link.download = img.name || 'imagem_wacomercial.jpg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // 2. Gravar o status "Download Realizado" no Firestore
+            let clientEmail = state.isAdmin ? (state.adminSelectedClientForRevision || document.getElementById('target-client-email')?.value) : state.user.email;
+            
+            if(clientEmail) {
+                try {
+                    const docRef = doc(db, "projetos", clientEmail.trim().toLowerCase());
+                    const docSnap = await getDoc(docRef);
+                    let downloaded = [];
+                    
+                    if(docSnap.exists() && docSnap.data().downloadedImages) {
+                        downloaded = docSnap.data().downloadedImages;
+                    }
+                    
+                    if(!downloaded.includes(img.name)) {
+                        downloaded.push(img.name);
+                        await setDoc(docRef, { downloadedImages: downloaded }, { merge: true });
+                        
+                        // Atualizar o estado local se o projeto for o que está aberto
+                        state.project.downloadedImages = downloaded;
+                        window.renderApp(); // Atualiza a galeria por trás para mostrar o badge
+                    }
+                    
+                    window.showToast("Download realizado e gravado no sistema!", "success");
+                    
+                    // Atualiza o visual do botão no modal temporariamente
+                    const btn = document.getElementById('btn-download-modal');
+                    if(btn) {
+                        btn.innerHTML = '<i class="ph-bold ph-check text-xl"></i> Baixada com sucesso';
+                        btn.classList.replace('bg-brand-500', 'bg-emerald-500');
+                        btn.classList.replace('hover:bg-brand-600', 'hover:bg-emerald-600');
+                        btn.classList.replace('shadow-brand-500/30', 'shadow-emerald-500/30');
+                    }
+
+                } catch (error) {
+                    console.error("Erro ao registar download:", error);
+                }
+            }
         }
 
         function renderGalleryModal() {
@@ -340,14 +395,18 @@
             if(!modal) {
                 modal = document.createElement('div');
                 modal.id = 'gallery-modal';
-                modal.className = "fixed inset-0 z-[999] bg-black/95 flex items-center justify-center fade-in touch-none";
+                modal.className = "fixed inset-0 z-[999] bg-black/95 flex items-center justify-center fade-in touch-none flex-col";
                 document.body.appendChild(modal);
                 
                 // Lógica de Swiping (Mobile)
                 let touchstartX = 0;
                 let touchendX = 0;
-                modal.addEventListener('touchstart', e => { touchstartX = e.changedTouches[0].screenX; });
+                modal.addEventListener('touchstart', e => { 
+                    if(e.target.closest('button')) return; // Ignora swipe se tocar no botão
+                    touchstartX = e.changedTouches[0].screenX; 
+                });
                 modal.addEventListener('touchend', e => {
+                    if(e.target.closest('button')) return;
                     touchendX = e.changedTouches[0].screenX;
                     handleSwipe();
                 });
@@ -360,7 +419,15 @@
             }
 
             const img = state.project.images[state.galleryIndex];
+            const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
             
+            // Estilos dinâmicos do botão baseados em se já foi baixada
+            const btnStyles = isDownloaded 
+                ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30" 
+                : "bg-brand-500 hover:bg-brand-600 shadow-brand-500/30";
+            const btnIcon = isDownloaded ? "ph-check" : "ph-download-simple";
+            const btnText = isDownloaded ? "Baixada com sucesso" : "Baixar Imagem";
+
             modal.innerHTML = `
                 <button onclick="window.closeGallery()" class="absolute top-4 right-4 md:top-8 md:right-8 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors z-50 backdrop-blur-md">
                     <i class="ph ph-x text-2xl"></i>
@@ -375,8 +442,15 @@
                     <i class="ph ph-caret-right text-2xl md:text-4xl"></i>
                 </button>
 
-                <div class="relative max-w-7xl w-full h-full flex items-center justify-center p-4 md:p-12" id="gallery-img-container">
-                    <img src="${img.url}" class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl slide-right" id="gallery-image">
+                <div class="relative w-full h-full flex flex-col items-center justify-center p-4 md:p-12 pb-24 md:pb-32" id="gallery-img-container">
+                    <img src="${img.url}" class="max-w-7xl max-h-[75vh] object-contain rounded-lg shadow-2xl slide-right" id="gallery-image">
+                    
+                    <!-- Botão de Download abaixo da imagem -->
+                    <div class="mt-6 md:mt-8 fade-in">
+                        <button id="btn-download-modal" onclick="window.baixarImagemAtual(${state.galleryIndex})" class="flex items-center gap-2 ${btnStyles} text-white px-8 py-3.5 rounded-xl font-bold shadow-lg transition-transform active:scale-95 text-sm md:text-base">
+                            <i class="ph-bold ${btnIcon} text-xl"></i> ${btnText}
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm font-medium bg-black/50 px-4 py-2 rounded-full backdrop-blur-md">
@@ -389,7 +463,8 @@
             if (state.galleryIndex < state.project.images.length - 1) {
                 state.galleryIndex++;
                 renderGalleryModal();
-                document.getElementById('gallery-image').classList.replace('slide-right', 'slide-left');
+                const imgEl = document.getElementById('gallery-image');
+                if(imgEl) imgEl.classList.replace('slide-right', 'slide-left');
             }
         }
 
@@ -721,7 +796,7 @@
                             </button>
                             <a href="#" class="flex items-center justify-center gap-2 text-sm font-medium text-brand-600 dark:text-white bg-brand-50 dark:bg-brand-500/10 hover:bg-brand-100 dark:hover:bg-brand-500/20 px-3 md:px-4 py-2 md:py-2.5 rounded-full border border-brand-200 dark:border-brand-500/20 active:scale-95 transition-all">
                                 <i class="ph-fill ph-whatsapp-logo text-brand-500 text-lg"></i>
-                                <span class="hidden md:block">Falar com Designer</span>
+                                <span class="hidden md:block">Falar com Wa Comercial</span>
                             </a>
                         </div>
                     </header>
@@ -977,8 +1052,12 @@
             let gridImagens = '';
             if (state.project.images && state.project.images.length > 0) {
                 state.project.images.forEach((img, index) => {
+                    const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
+                    const downloadBadge = isDownloaded ? `<div class="absolute top-2 left-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10"><i class="ph-bold ph-check text-[12px]"></i></div>` : '';
+
                     gridImagens += `
                         <div class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group cursor-pointer aspect-square relative transition-transform hover:scale-[1.02] shadow-sm" onclick="window.verConceitoFull(${index})">
+                            ${downloadBadge}
                             <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover">
                             <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                                 <span class="text-[10px] md:text-xs text-white font-medium truncate w-full">${img.name}</span>
@@ -1033,6 +1112,56 @@
                     </div>
                 `;
             }
+
+            // Bloco UPSELL - Materiais Extras
+            let upsellBlock = `
+                <div class="mt-12 mb-4">
+                    <div class="flex items-center justify-between mb-4 md:mb-6">
+                        <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+                            📚 Materiais Extras <span class="text-[10px] bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400 px-2 py-1 rounded-md uppercase tracking-wide">Eleve sua marca</span>
+                        </h4>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <!-- Item 1 -->
+                        <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
+                            <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-4 text-blue-500">
+                                <i class="ph-fill ph-globe text-2xl"></i>
+                            </div>
+                            <h5 class="font-bold text-zinc-900 dark:text-white mb-2">Criação de Site Profissional</h5>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Tenha um site de alta conversão, rápido e otimizado para o Google.</p>
+                            <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
+                        </div>
+                        <!-- Item 2 -->
+                        <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
+                            <div class="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center mb-4 text-purple-500">
+                                <i class="ph-fill ph-video-camera text-2xl"></i>
+                            </div>
+                            <h5 class="font-bold text-zinc-900 dark:text-white mb-2">Produção de Vídeos</h5>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Vídeos dinâmicos e institucionais que prendem a atenção do seu cliente.</p>
+                            <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
+                        </div>
+                        <!-- Item 3 -->
+                        <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
+                            <div class="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mb-4 text-emerald-500">
+                                <i class="ph-fill ph-megaphone text-2xl"></i>
+                            </div>
+                            <h5 class="font-bold text-zinc-900 dark:text-white mb-2">Anúncios Patrocinados</h5>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Tráfego pago no Google e Meta para multiplicar as suas vendas rapidamente.</p>
+                            <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
+                        </div>
+                        <!-- Item 4 -->
+                        <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
+                            <div class="w-12 h-12 rounded-xl bg-pink-50 dark:bg-pink-500/10 flex items-center justify-center mb-4 text-pink-500">
+                                <i class="ph-fill ph-users-three text-2xl"></i>
+                            </div>
+                            <h5 class="font-bold text-zinc-900 dark:text-white mb-2">Pacote Redes Sociais</h5>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Estratégias e artes prontas para atrair e engajar clientes todos os dias.</p>
+                            <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
+                        </div>
+                    </div>
+                </div>
+            `;
 
             return `
                 ${adminUploadUI} 
@@ -1102,6 +1231,8 @@
                     </div>
                     
                     ${decisionBlock}
+                    
+                    ${upsellBlock}
                 </div>
             `;
         }
