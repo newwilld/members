@@ -126,7 +126,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, getDocs, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDUWJKs_LspaznsFak_WsSmYNQobNBiflU",
@@ -632,6 +632,54 @@
             }
         }
 
+        // --- LÓGICA ADMIN: APAGAR IMAGENS ---
+        window.apagarImagem = async function(e, fileName) {
+            e.stopPropagation(); // Evita abrir a galeria ao clicar no X
+            if(!state.isAdmin) return;
+            
+            if(!confirm("Tem certeza que deseja apagar esta imagem?")) return;
+
+            const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
+            if(!clientEmail) return;
+
+            try {
+                window.showToast("A apagar imagem...", "info");
+                await deleteDoc(doc(db, "projetos", clientEmail, "imagens_apresentacao", fileName));
+                
+                // Atualizar estado local
+                state.project.images = state.project.images.filter(img => img.name !== fileName);
+                window.renderApp();
+                window.showToast("Imagem apagada com sucesso!", "success");
+            } catch (error) {
+                console.error("Erro ao apagar imagem", error);
+                window.showToast("Erro ao apagar imagem.", "error");
+            }
+        }
+
+        window.apagarTodasImagens = async function() {
+            if(!state.isAdmin) return;
+            if(!state.project.images || state.project.images.length === 0) return;
+            
+            if(!confirm("Tem certeza que deseja apagar TODAS as imagens deste cliente? Esta ação não pode ser desfeita.")) return;
+
+            const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
+            if(!clientEmail) return;
+
+            try {
+                window.showToast("A apagar todas as imagens...", "info");
+                for (let img of state.project.images) {
+                    await deleteDoc(doc(db, "projetos", clientEmail, "imagens_apresentacao", img.name));
+                }
+                
+                state.project.images = [];
+                window.renderApp();
+                window.showToast("Todas as imagens foram apagadas!", "success");
+            } catch (error) {
+                console.error("Erro ao apagar todas as imagens", error);
+                window.showToast("Erro ao apagar as imagens.", "error");
+            }
+        }
+
         // --- LÓGICA ADMIN: ADICIONAR E APAGAR PACOTE DE ENTREGA (LINKS) ---
         window.adicionarFicheiroEntrega = async function(e) {
             e.preventDefault();
@@ -1116,14 +1164,23 @@
                     const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
                     const downloadBadge = isDownloaded ? `<div class="absolute top-2 left-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10"><i class="ph-bold ph-check text-[12px]"></i></div>` : '';
 
+                    // Lógica para os botões de administração de cada imagem
+                    const expandIconPos = state.isAdmin ? 'right-[44px]' : 'right-2';
+                    const deleteBtn = state.isAdmin ? `
+                        <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
+                            <i class="ph-bold ph-x text-[14px]"></i>
+                        </button>
+                    ` : '';
+
                     gridImagens += `
                         <div class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group cursor-pointer aspect-square relative transition-transform hover:scale-[1.02] shadow-sm" onclick="window.verConceitoFull(${index})">
                             ${downloadBadge}
+                            ${deleteBtn}
                             <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover">
                             <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                                 <span class="text-[10px] md:text-xs text-white font-medium truncate w-full">${img.name}</span>
                             </div>
-                            <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                            <div class="absolute top-2 ${expandIconPos} w-8 h-8 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 hover:bg-black/80">
                                 <i class="ph ph-arrows-out text-white text-xs"></i>
                             </div>
                         </div>
@@ -1135,6 +1192,18 @@
                         <i class="ph ph-image text-4xl text-zinc-300 dark:text-dark-600 mb-3"></i>
                         <p class="text-zinc-500 dark:text-zinc-400 font-medium">As imagens da apresentação aparecerão aqui.</p>
                         ${state.isAdmin ? '<p class="text-xs text-brand-500 mt-2">Use o painel acima para enviar as imagens.</p>' : ''}
+                    </div>
+                `;
+            }
+
+            // Opções Adicionais de Administração para a Galeria como um todo (Apagar Todas)
+            let galeriaAdminActions = '';
+            if (state.isAdmin && state.project.images && state.project.images.length > 0) {
+                galeriaAdminActions = `
+                    <div class="flex gap-2">
+                        <button onclick="window.apagarTodasImagens()" class="text-[11px] md:text-xs bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 font-semibold active:scale-95">
+                            <i class="ph-bold ph-trash"></i> Apagar Todas
+                        </button>
                     </div>
                 `;
             }
@@ -1282,8 +1351,9 @@
                 ${balaoInformativo}
 
                 <div class="mb-4">
-                    <div class="flex items-center justify-between mb-4 md:mb-6">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-6 gap-3">
                         <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-image text-brand-500"></i> Galeria da Marca</h4>
+                        ${galeriaAdminActions}
                     </div>
                     
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 mb-10">
