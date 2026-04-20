@@ -116,6 +116,14 @@
         .slide-right { animation: slideRight 0.3s ease-out forwards; }
         @keyframes slideLeft { from { transform: translateX(50px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes slideRight { from { transform: translateX(-50px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* Estilos de Drag and Drop */
+        .drag-over {
+            border: 2px dashed #14b8a6 !important;
+            transform: scale(1.02);
+            opacity: 0.8;
+            box-shadow: 0 0 15px rgba(20, 184, 166, 0.4);
+        }
     </style>
 </head>
 <body class="overflow-x-hidden bg-zinc-50 dark:bg-dark-900 text-zinc-900 dark:text-zinc-100 selection:bg-brand-500 selection:text-white transition-colors duration-300">
@@ -125,8 +133,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail, updatePassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, getDocs, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDUWJKs_LspaznsFak_WsSmYNQobNBiflU",
@@ -153,7 +161,7 @@
         const state = {
             isLoggedIn: false,
             isAdmin: false,
-            currentClientEmail: null, // Novo campo para gerir ações de ficheiros corretamente
+            currentClientEmail: null,
             currentTab: 'dashboard',
             theme: savedTheme,
             user: { name: "", email: "" },
@@ -203,9 +211,8 @@
         // --- FETCH DADOS DO CLIENTE ---
         async function fetchClientData(emailToFetch) {
             try {
-                state.currentClientEmail = emailToFetch; // Guarda o email atual visualizado
+                state.currentClientEmail = emailToFetch;
 
-                // Obter status do projeto, ficheiros e revisões
                 const docRef = doc(db, "projetos", emailToFetch);
                 const docSnap = await getDoc(docRef);
                 
@@ -221,11 +228,18 @@
                     state.project.downloadedImages = [];
                 }
 
-                // Obter imagens
                 const imgsRef = collection(db, "projetos", emailToFetch, "imagens_apresentacao");
                 const snapshot = await getDocs(imgsRef);
                 const loadedImages = snapshot.docs.map(doc => doc.data());
-                loadedImages.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                
+                // Ordenar primeiro pelo campo `order` personalizado, depois pelo nome
+                loadedImages.sort((a, b) => {
+                    if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+                    if (a.order !== undefined) return -1;
+                    if (b.order !== undefined) return 1;
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+                });
+                
                 state.project.images = loadedImages;
 
             } catch (error) {
@@ -328,7 +342,6 @@
             }
         }
 
-        // --- LÓGICA ADMIN: SELECIONAR CLIENTE NA ABA REVISÕES ---
         window.selectClientForRevision = async function(email) {
             state.adminSelectedClientForRevision = email;
             window.showToast("A carregar histórico do cliente...", "info");
@@ -336,7 +349,100 @@
             window.renderApp();
         }
 
-        // --- GALERIA DE IMAGENS E DOWNLOAD (SWIPE E TECLADO) ---
+        // --- RECUPERAR SENHA E TROCAR SENHA ---
+        window.recuperarSenha = async function(e) {
+            if (e) e.preventDefault();
+            const emailInput = document.getElementById('email-input');
+            const email = emailInput ? emailInput.value.trim() : '';
+
+            if(!email) {
+                window.showToast('Escreva o seu e-mail no campo acima e clique novamente em "Esqueceu a senha?".', 'info');
+                if (emailInput) emailInput.focus();
+                return;
+            }
+
+            try {
+                window.showToast('A enviar e-mail de recuperação...', 'info');
+                await sendPasswordResetEmail(auth, email);
+                window.showToast('E-mail enviado! Verifique a sua caixa de entrada e spam.', 'success');
+            } catch (error) {
+                console.error(error);
+                window.showToast('Erro ao recuperar senha. Verifique se o e-mail está correto.', 'error');
+            }
+        }
+
+        window.openTrocarSenha = function(e) {
+            if (e) e.preventDefault();
+            
+            const modalHTML = `
+                <div id="modal-trocar-senha" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm fade-in px-4">
+                    <div class="bg-white dark:bg-dark-900 w-full max-w-sm p-6 sm:p-8 rounded-3xl shadow-xl relative border border-zinc-200 dark:border-dark-700">
+                        <button onclick="document.getElementById('modal-trocar-senha').remove()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-100 dark:bg-dark-800 flex items-center justify-center text-zinc-500 hover:text-zinc-800 dark:hover:text-white transition-colors">
+                            <i class="ph ph-x text-lg"></i>
+                        </button>
+                        <div class="mb-6 text-center">
+                            <div class="w-12 h-12 bg-brand-50 dark:bg-brand-500/10 rounded-full mx-auto flex items-center justify-center mb-3">
+                                <i class="ph-fill ph-lock-key text-brand-500 text-2xl"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-zinc-900 dark:text-white">Trocar Senha</h3>
+                            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Insira os seus dados para definir uma nova senha.</p>
+                        </div>
+                        <form id="form-trocar-senha" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase">E-mail</label>
+                                <input type="email" id="ts-email" placeholder="O seu e-mail" class="w-full bg-zinc-50 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 px-4 focus:outline-none focus:border-brand-500 text-sm shadow-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase">Senha Atual</label>
+                                <input type="password" id="ts-old-pw" placeholder="Senha atual" class="w-full bg-zinc-50 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 px-4 focus:outline-none focus:border-brand-500 text-sm shadow-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase">Nova Senha</label>
+                                <input type="password" id="ts-new-pw" placeholder="Nova senha (min. 6 caracteres)" minlength="6" class="w-full bg-zinc-50 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 px-4 focus:outline-none focus:border-brand-500 text-sm shadow-sm" required>
+                            </div>
+                            <button type="submit" id="btn-submit-ts" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3.5 rounded-xl transition-all active:scale-95 shadow-md shadow-brand-500/20 mt-2">
+                                Confirmar e Trocar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+            document.getElementById('form-trocar-senha').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('ts-email').value;
+                const oldPw = document.getElementById('ts-old-pw').value;
+                const newPw = document.getElementById('ts-new-pw').value;
+                const btn = document.getElementById('btn-submit-ts');
+                
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-lg"></i> A processar...';
+                btn.disabled = true;
+
+                try {
+                    window.showToast("A validar credenciais...", "info");
+                    const userCredential = await signInWithEmailAndPassword(auth, email, oldPw);
+                    await updatePassword(userCredential.user, newPw);
+                    
+                    window.showToast("Senha atualizada com sucesso!", "success");
+                    document.getElementById('modal-trocar-senha').remove();
+                } catch (error) {
+                    console.error(error);
+                    window.showToast("Erro ao trocar senha. Verifique as credenciais inseridas.", "error");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        // --- GALERIA DE IMAGENS E DOWNLOAD ---
+        window.handleImageClick = function(event, index) {
+            // Evita que o clique seja disparado ao largar numa zona de drag (Admin)
+            if (state.isAdmin && event.target.closest('.drag-over')) return;
+            window.verConceitoFull(index);
+        };
+
         window.verConceitoFull = function(index) {
             state.galleryIndex = index;
             renderGalleryModal();
@@ -346,7 +452,6 @@
             const img = state.project.images[index];
             if(!img) return;
 
-            // 1. Iniciar o Download Fisicamente no dispositivo
             const link = document.createElement('a');
             link.href = img.url;
             link.download = img.name || 'imagem_wacomercial.jpg';
@@ -354,7 +459,6 @@
             link.click();
             document.body.removeChild(link);
 
-            // 2. Gravar o status "Download Realizado" no Firestore
             let clientEmail = state.isAdmin ? (state.adminSelectedClientForRevision || document.getElementById('target-client-email')?.value) : state.user.email;
             
             if(clientEmail) {
@@ -371,14 +475,12 @@
                         downloaded.push(img.name);
                         await setDoc(docRef, { downloadedImages: downloaded }, { merge: true });
                         
-                        // Atualizar o estado local se o projeto for o que está aberto
                         state.project.downloadedImages = downloaded;
-                        window.renderApp(); // Atualiza a galeria por trás para mostrar o badge
+                        window.renderApp(); // Atualiza os emblemas na grelha de imagens ao fundo
                     }
                     
                     window.showToast("Download realizado e gravado no sistema!", "success");
                     
-                    // Atualiza o visual do botão no modal temporariamente
                     const btn = document.getElementById('btn-download-modal');
                     if(btn) {
                         btn.innerHTML = '<i class="ph-bold ph-check text-xl"></i> Baixada com sucesso';
@@ -386,7 +488,6 @@
                         btn.classList.replace('hover:bg-brand-600', 'hover:bg-emerald-600');
                         btn.classList.replace('shadow-brand-500/30', 'shadow-emerald-500/30');
                     }
-
                 } catch (error) {
                     console.error("Erro ao registar download:", error);
                 }
@@ -401,11 +502,10 @@
                 modal.className = "fixed inset-0 z-[999] bg-black/95 flex items-center justify-center fade-in touch-none flex-col";
                 document.body.appendChild(modal);
                 
-                // Lógica de Swiping (Mobile)
                 let touchstartX = 0;
                 let touchendX = 0;
                 modal.addEventListener('touchstart', e => { 
-                    if(e.target.closest('button')) return; // Ignora swipe se tocar no botão
+                    if(e.target.closest('button')) return;
                     touchstartX = e.changedTouches[0].screenX; 
                 });
                 modal.addEventListener('touchend', e => {
@@ -416,15 +516,14 @@
 
                 function handleSwipe() {
                     const threshold = 50;
-                    if (touchendX < touchstartX - threshold) window.nextImage(); // Swipe Esquerda
-                    if (touchendX > touchstartX + threshold) window.prevImage(); // Swipe Direita
+                    if (touchendX < touchstartX - threshold) window.nextImage();
+                    if (touchendX > touchstartX + threshold) window.prevImage();
                 }
             }
 
             const img = state.project.images[state.galleryIndex];
             const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
             
-            // Estilos dinâmicos do botão baseados em se já foi baixada
             const btnStyles = isDownloaded 
                 ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30" 
                 : "bg-brand-500 hover:bg-brand-600 shadow-brand-500/30";
@@ -436,7 +535,6 @@
                     <i class="ph ph-x text-2xl"></i>
                 </button>
                 
-                <!-- Setas de Navegação -->
                 <button onclick="window.prevImage()" class="absolute left-2 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 md:w-16 md:h-16 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-colors z-50 backdrop-blur-md ${state.galleryIndex === 0 ? 'opacity-30 cursor-not-allowed' : ''}">
                     <i class="ph ph-caret-left text-2xl md:text-4xl"></i>
                 </button>
@@ -448,7 +546,6 @@
                 <div class="relative w-full h-full flex flex-col items-center justify-center p-4 md:p-12 pb-24 md:pb-32" id="gallery-img-container">
                     <img src="${img.url}" class="max-w-7xl max-h-[75vh] object-contain rounded-lg shadow-2xl slide-right" id="gallery-image">
                     
-                    <!-- Botão de Download abaixo da imagem -->
                     <div class="mt-6 md:mt-8 fade-in">
                         <button id="btn-download-modal" onclick="window.baixarImagemAtual(${state.galleryIndex})" class="flex items-center gap-2 ${btnStyles} text-white px-8 py-3.5 rounded-xl font-bold shadow-lg transition-transform active:scale-95 text-sm md:text-base">
                             <i class="ph-bold ${btnIcon} text-xl"></i> ${btnText}
@@ -483,7 +580,6 @@
             if(modal) modal.remove();
         }
 
-        // Teclado para a Galeria
         document.addEventListener('keydown', e => {
             if (document.getElementById('gallery-modal')) {
                 if (e.key === 'ArrowRight') window.nextImage();
@@ -508,7 +604,6 @@
                 
                 state.project.approved = true;
                 window.showToast('Projeto Aprovado! Ficheiros finais desbloqueados.', 'success');
-                // Redirecionamento automático após aprovar
                 window.changeTab('arquivos');
             } catch (error) {
                 console.error(error);
@@ -527,7 +622,6 @@
                 return;
             }
 
-            // Descobrir qual o email do cliente (Admin envia para o selecionado na aba Revisões, Cliente envia para o próprio)
             let clientEmail = '';
             if(state.isAdmin) {
                 if(state.adminSelectedClientForRevision) {
@@ -605,17 +699,20 @@
             btnUpload.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-lg"></i> A Enviar...';
 
             try {
-                // Criação do documento pai caso não exista
                 await setDoc(doc(db, "projetos", clientEmail), { email: clientEmail }, { merge: true });
                 
                 const imgsRef = collection(db, "projetos", clientEmail, "imagens_apresentacao");
-                for (let file of files) {
+                const startIndex = state.project.images ? state.project.images.length : 0;
+
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
                     const base64Data = await compressImage(file, 1200);
-                    await setDoc(doc(imgsRef, file.name), { name: file.name, url: base64Data });
+                    // Guarda o ficheiro com uma ordem default incremental
+                    await setDoc(doc(imgsRef, file.name), { name: file.name, url: base64Data, order: startIndex + i });
                 }
 
                 await fetchClientData(clientEmail);
-                await fetchAllClients(); // Atualiza lista de aprovações
+                await fetchAllClients(); 
                 window.renderApp();
                 
                 setTimeout(() => {
@@ -631,6 +728,122 @@
                 btnUpload.innerHTML = '<i class="ph ph-upload-simple text-lg"></i> Adicionar Imagens';
             }
         }
+
+        // --- LÓGICA ADMIN: APAGAR IMAGENS ---
+        window.apagarImagem = async function(e, fileName) {
+            e.stopPropagation(); 
+            if(!state.isAdmin) return;
+            
+            if(!confirm("Tem certeza que deseja apagar esta imagem?")) return;
+
+            const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
+            if(!clientEmail) return;
+
+            try {
+                window.showToast("A apagar imagem...", "info");
+                await deleteDoc(doc(db, "projetos", clientEmail, "imagens_apresentacao", fileName));
+                
+                state.project.images = state.project.images.filter(img => img.name !== fileName);
+                window.renderApp();
+                window.showToast("Imagem apagada com sucesso!", "success");
+            } catch (error) {
+                console.error("Erro ao apagar imagem", error);
+                window.showToast("Erro ao apagar imagem.", "error");
+            }
+        }
+
+        window.apagarTodasImagens = async function() {
+            if(!state.isAdmin) return;
+            if(!state.project.images || state.project.images.length === 0) return;
+            
+            if(!confirm("Tem certeza que deseja apagar TODAS as imagens deste cliente? Esta ação não pode ser desfeita.")) return;
+
+            const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
+            if(!clientEmail) return;
+
+            try {
+                window.showToast("A apagar todas as imagens...", "info");
+                for (let img of state.project.images) {
+                    await deleteDoc(doc(db, "projetos", clientEmail, "imagens_apresentacao", img.name));
+                }
+                
+                state.project.images = [];
+                window.renderApp();
+                window.showToast("Todas as imagens foram apagadas!", "success");
+            } catch (error) {
+                console.error("Erro ao apagar todas as imagens", error);
+                window.showToast("Erro ao apagar as imagens.", "error");
+            }
+        }
+
+        // --- LÓGICA ADMIN: DRAG AND DROP (ORDENAÇÃO DE IMAGENS) ---
+        window.handleDragStart = function(e, index) {
+            if(!state.isAdmin) return;
+            e.dataTransfer.setData('text/plain', index);
+            e.dataTransfer.effectAllowed = 'move';
+            // Efeito visual no elemento arrastado (timeout para não afetar o "fantasma" nativo de arraste)
+            setTimeout(() => e.target.classList.add('opacity-40'), 10);
+        };
+
+        window.handleDragEnd = function(e) {
+            e.target.classList.remove('opacity-40');
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        };
+
+        window.handleDragOver = function(e) {
+            e.preventDefault();
+            if(!state.isAdmin) return;
+            e.dataTransfer.dropEffect = 'move';
+            
+            const target = e.currentTarget;
+            if(!target.classList.contains('drag-over')) {
+                target.classList.add('drag-over');
+            }
+        };
+
+        window.handleDragLeave = function(e) {
+            e.currentTarget.classList.remove('drag-over');
+        };
+
+        window.handleDrop = async function(e, targetIndex) {
+            e.preventDefault();
+            if(!state.isAdmin) return;
+            
+            e.currentTarget.classList.remove('drag-over');
+            
+            const draggedIndexStr = e.dataTransfer.getData('text/plain');
+            if(!draggedIndexStr) return;
+            
+            const draggedIndex = parseInt(draggedIndexStr);
+            // Previne erro ao largar no mesmo local ou item inválido
+            if(draggedIndex === targetIndex || isNaN(draggedIndex)) return;
+
+            // Reordenar a array localmente
+            const draggedItem = state.project.images.splice(draggedIndex, 1)[0];
+            state.project.images.splice(targetIndex, 0, draggedItem);
+            
+            // Renderizar instantaneamente a nova ordem para melhor UX
+            window.renderApp();
+            window.showToast("A guardar nova ordem...", "info");
+
+            // Guardar no Firestore
+            try {
+                const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
+                const imgsRef = collection(db, "projetos", clientEmail, "imagens_apresentacao");
+                
+                // Atualiza todas as imagens em paralelo para estabelecer a nova propriedade 'order'
+                const promises = state.project.images.map((img, idx) => {
+                    img.order = idx; 
+                    return setDoc(doc(imgsRef, img.name), { order: idx }, { merge: true });
+                });
+                
+                await Promise.all(promises);
+                window.showToast("Ordem guardada com sucesso!", "success");
+            } catch (error) {
+                console.error("Erro ao guardar ordem:", error);
+                window.showToast("Erro ao guardar a nova ordem.", "error");
+            }
+        };
 
         // --- LÓGICA ADMIN: ADICIONAR E APAGAR PACOTE DE ENTREGA (LINKS) ---
         window.adicionarFicheiroEntrega = async function(e) {
@@ -651,7 +864,6 @@
                     bg: "bg-brand-50 dark:bg-brand-500/10"
                 };
 
-                // Recuperar estado atual
                 const docRef = doc(db, "projetos", clientEmail);
                 const docSnap = await getDoc(docRef);
                 let atuais = [];
@@ -662,7 +874,6 @@
                 await setDoc(docRef, { deliveryFiles: atuais, email: clientEmail }, { merge: true });
                 window.showToast("Ficheiro adicionado com sucesso!", "success");
                 
-                // Se o admin está a ver o mesmo cliente, recarrega
                 if(clientEmail === document.getElementById('delivery-email').value) {
                     await fetchClientData(clientEmail);
                     window.renderApp();
@@ -673,7 +884,6 @@
             }
         }
 
-        // Função Adicionada para apagar ficheiros da lista de entregas (Apenas Admin)
         window.apagarFicheiroEntrega = async function(index) {
             const clientEmail = state.currentClientEmail;
             if(!clientEmail) {
@@ -701,7 +911,7 @@
 
         // --- LÓGICA ADMIN: ALTERAR STATUS DO PROJETO ---
         window.toggleClientApproval = async function(e, email, currentStatus) {
-            if (e) e.stopPropagation(); // Evita o conflito de clique na lista de revisões
+            if (e) e.stopPropagation(); 
             if (!state.isAdmin) return;
 
             const newStatus = !currentStatus;
@@ -712,13 +922,11 @@
                 const docRef = doc(db, "projetos", email);
                 await setDoc(docRef, { approved: newStatus }, { merge: true });
                 
-                // Atualizar estado global
                 const clientIndex = state.allClients.findIndex(c => c.email === email);
                 if(clientIndex !== -1) {
                     state.allClients[clientIndex].approved = newStatus;
                 }
                 
-                // Atualizar projeto atual se for o mesmo sendo visualizado
                 if(state.currentClientEmail === email || state.adminSelectedClientForRevision === email) {
                     state.project.approved = newStatus;
                 }
@@ -764,6 +972,12 @@
                                     <input type="password" id="password-input" placeholder="A sua senha" class="w-full bg-white dark:bg-dark-900/80 border border-zinc-200 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3.5 pl-11 pr-4 focus:outline-none focus:border-brand-500 text-sm shadow-sm dark:shadow-none" required>
                                 </div>
                             </div>
+                            
+                            <div class="flex items-center justify-between px-1 mt-1">
+                                <a href="#" onclick="window.openTrocarSenha(event)" class="text-xs text-zinc-500 dark:text-zinc-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors">Trocar senha</a>
+                                <a href="#" onclick="window.recuperarSenha(event)" class="text-xs font-medium text-brand-600 dark:text-brand-500 hover:underline">Esqueceu a senha?</a>
+                            </div>
+
                             <button type="submit" id="btn-login" class="w-full bg-brand-500 text-white font-medium py-3.5 rounded-xl transition-all active:scale-95 shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 mt-2 sm:mt-4 hover:bg-brand-600">
                                 Entrar no Portal <i class="ph ph-arrow-right font-bold"></i>
                             </button>
@@ -904,12 +1118,10 @@
         function getRevisoesContent() {
             let listaRevisoesHTML = '';
             
-            // Construção das mensagens do chat (mesmo para admin ou cliente)
             if(state.project.revisoes && state.project.revisoes.length > 0) {
                 listaRevisoesHTML = state.project.revisoes.map(rev => {
                     const isClient = rev.autor === 'Cliente';
                     
-                    // Correção automática para mensagens antigas salvas como "Estúdio" ou "WaComercial" na Base de Dados
                     let nomeAutor = rev.autor;
                     if(nomeAutor === 'Estúdio' || nomeAutor === 'WaComercial') {
                         nomeAutor = 'Wa Comercial';
@@ -944,11 +1156,9 @@
                 </div>
             `;
 
-            // SE FOR ADMINISTRADOR, MOSTRA A LISTA DE CLIENTES À ESQUERDA E O CHAT À DIREITA
             if (state.isAdmin) {
                 return `
                     <div class="flex flex-col lg:flex-row gap-6 mb-6">
-                        <!-- LISTA DE CLIENTES -->
                         <div class="w-full lg:w-1/3 flex flex-col gap-4">
                             <div class="glass-panel p-5 rounded-2xl md:rounded-3xl border border-zinc-200 dark:border-dark-700 h-[600px] flex flex-col">
                                 <h3 class="font-bold text-zinc-900 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-wider text-sm">
@@ -969,7 +1179,6 @@
                             </div>
                         </div>
 
-                        <!-- CHAT VIEW -->
                         <div class="w-full lg:w-2/3">
                             <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 h-[600px] flex flex-col relative">
                                 ${state.adminSelectedClientForRevision ? `
@@ -1000,7 +1209,6 @@
                 `;
             }
 
-            // SE FOR CLIENTE, MOSTRA APENAS O SEU CHAT
             return `
                 <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 mb-6 relative min-h-[500px] flex flex-col">
                     <h3 class="text-lg md:text-xl font-bold text-zinc-900 dark:text-white mb-2 flex items-center gap-2">
@@ -1018,10 +1226,8 @@
         }
 
         function getOverviewContent() {
-            
             let adminUploadUI = '';
             if (state.isAdmin) {
-                // Lista de Clientes (Aprovados ou não)
                 let listaAprovacoes = '';
                 if(state.allClients.length > 0) {
                     listaAprovacoes = state.allClients.map(c => `
@@ -1060,7 +1266,6 @@
                             </div>
                         </div>
 
-                        <!-- Status de Aprovações (Apenas Admin) -->
                         <div class="glass-panel border border-zinc-200 dark:border-dark-700 rounded-2xl p-5 md:p-6 bg-white dark:bg-dark-900 overflow-hidden flex flex-col h-full max-h-[220px]">
                             <h4 class="text-sm font-bold text-zinc-900 dark:text-white mb-3 uppercase tracking-wider flex items-center gap-2">
                                 <i class="ph-fill ph-check-circle text-brand-500"></i> Status dos Projetos
@@ -1073,11 +1278,9 @@
                 `;
             }
 
-            // Ocultar blocos de aprovação se já estiver aprovado
             const progressValue = state.project.approved ? 100 : state.project.progress;
             const currentStageClass = state.project.approved ? state.project.stages.length - 1 : state.project.currentStage; 
 
-            // Balão Informativo / Apresentação
             let balaoInformativo = `
                 <div class="glass-panel border-l-4 border-brand-500 rounded-2xl p-6 md:p-8 mb-8 bg-brand-50/60 dark:bg-brand-900/10 shadow-sm relative overflow-hidden">
                     <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
@@ -1114,16 +1317,37 @@
             if (state.project.images && state.project.images.length > 0) {
                 state.project.images.forEach((img, index) => {
                     const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
-                    const downloadBadge = isDownloaded ? `<div class="absolute top-2 left-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10"><i class="ph-bold ph-check text-[12px]"></i></div>` : '';
+                    const downloadBadge = isDownloaded ? `<div class="absolute top-2 left-2 px-2 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente"><i class="ph-bold ph-check text-[12px]"></i> <span class="text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span></div>` : '';
+
+                    const expandIconPos = state.isAdmin ? 'right-[44px]' : 'right-2';
+                    const deleteBtn = state.isAdmin ? `
+                        <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
+                            <i class="ph-bold ph-x text-[14px]"></i>
+                        </button>
+                    ` : '';
+
+                    // Adição dos atributos para Drag and Drop
+                    const dragProps = state.isAdmin ? `
+                        draggable="true"
+                        ondragstart="window.handleDragStart(event, ${index})"
+                        ondragend="window.handleDragEnd(event)"
+                        ondragover="window.handleDragOver(event)"
+                        ondragleave="window.handleDragLeave(event)"
+                        ondrop="window.handleDrop(event, ${index})"
+                    ` : '';
+
+                    const cursorClass = state.isAdmin ? 'cursor-move' : 'cursor-pointer';
 
                     gridImagens += `
-                        <div class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group cursor-pointer aspect-square relative transition-transform hover:scale-[1.02] shadow-sm" onclick="window.verConceitoFull(${index})">
+                        <div ${dragProps} class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group ${cursorClass} aspect-square relative transition-all hover:scale-[1.02] shadow-sm" onclick="window.handleImageClick(event, ${index})">
                             ${downloadBadge}
-                            <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover">
-                            <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                            ${deleteBtn}
+                            <!-- pointer-events-none para não interferir no dragleave do elemento pai -->
+                            <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover pointer-events-none">
+                            <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                 <span class="text-[10px] md:text-xs text-white font-medium truncate w-full">${img.name}</span>
                             </div>
-                            <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                            <div class="absolute top-2 ${expandIconPos} w-8 h-8 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 hover:bg-black/80 pointer-events-none">
                                 <i class="ph ph-arrows-out text-white text-xs"></i>
                             </div>
                         </div>
@@ -1135,6 +1359,18 @@
                         <i class="ph ph-image text-4xl text-zinc-300 dark:text-dark-600 mb-3"></i>
                         <p class="text-zinc-500 dark:text-zinc-400 font-medium">As imagens da apresentação aparecerão aqui.</p>
                         ${state.isAdmin ? '<p class="text-xs text-brand-500 mt-2">Use o painel acima para enviar as imagens.</p>' : ''}
+                    </div>
+                `;
+            }
+
+            let galeriaAdminActions = '';
+            if (state.isAdmin && state.project.images && state.project.images.length > 0) {
+                galeriaAdminActions = `
+                    <div class="flex items-center gap-2">
+                        <span class="hidden md:flex text-xs text-zinc-400 dark:text-zinc-500 mr-2 items-center gap-1"><i class="ph ph-arrows-out-cardinal"></i> Arraste para ordenar</span>
+                        <button onclick="window.apagarTodasImagens()" class="text-[11px] md:text-xs bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 font-semibold active:scale-95">
+                            <i class="ph-bold ph-trash"></i> Apagar Todas
+                        </button>
                     </div>
                 `;
             }
@@ -1174,7 +1410,6 @@
                 `;
             }
 
-            // Bloco UPSELL - Materiais Extras
             let upsellBlock = `
                 <div class="mt-12 mb-4">
                     <div class="flex items-center justify-between mb-4 md:mb-6">
@@ -1184,7 +1419,6 @@
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <!-- Item 1 -->
                         <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
                             <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-4 text-blue-500">
                                 <i class="ph-fill ph-globe text-2xl"></i>
@@ -1193,7 +1427,6 @@
                             <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Tenha um site de alta conversão, rápido e otimizado para o Google.</p>
                             <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
                         </div>
-                        <!-- Item 2 -->
                         <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
                             <div class="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center mb-4 text-purple-500">
                                 <i class="ph-fill ph-video-camera text-2xl"></i>
@@ -1202,7 +1435,6 @@
                             <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Vídeos dinâmicos e institucionais que prendem a atenção do seu cliente.</p>
                             <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
                         </div>
-                        <!-- Item 3 -->
                         <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
                             <div class="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mb-4 text-emerald-500">
                                 <i class="ph-fill ph-megaphone text-2xl"></i>
@@ -1211,7 +1443,6 @@
                             <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4 flex-1">Tráfego pago no Google e Meta para multiplicar as suas vendas rapidamente.</p>
                             <a href="#" onclick="window.showToast('Encaminhando para o WhatsApp...', 'info')" class="w-full text-center py-2.5 rounded-xl border border-zinc-200 dark:border-dark-600 text-sm font-semibold text-zinc-700 dark:text-zinc-300 group-hover:bg-brand-500 group-hover:border-brand-500 group-hover:text-white transition-all">Saber Mais</a>
                         </div>
-                        <!-- Item 4 -->
                         <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
                             <div class="w-12 h-12 rounded-xl bg-pink-50 dark:bg-pink-500/10 flex items-center justify-center mb-4 text-pink-500">
                                 <i class="ph-fill ph-users-three text-2xl"></i>
@@ -1282,8 +1513,9 @@
                 ${balaoInformativo}
 
                 <div class="mb-4">
-                    <div class="flex items-center justify-between mb-4 md:mb-6">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-6 gap-3">
                         <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-image text-brand-500"></i> Galeria da Marca</h4>
+                        ${galeriaAdminActions}
                     </div>
                     
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 mb-10">
@@ -1298,8 +1530,6 @@
         }
 
         function getFilesContent() {
-            
-            // UI Administrador: Formulário para anexar links de ficheiros finais
             let adminUploadFileUI = '';
             if (state.isAdmin) {
                 adminUploadFileUI = `
@@ -1333,13 +1563,11 @@
                 `;
             }
 
-            // Exibir a lista de ficheiros reais do Firestore (ou vazio)
             let filesListHTML = '';
             const files = state.project.deliveryFiles || [];
 
             if(files.length > 0) {
                 filesListHTML = files.map((file, index) => {
-                    // O ficheiro só fica disponível se o Admin o enviar, e se o cliente aprovar o projeto (Ou se for o próprio admin a ver)
                     const isAvailable = state.project.approved || state.isAdmin;
 
                     return `
@@ -1360,7 +1588,6 @@
                                 </div>
                             </div>
                             
-                            <!-- BOTOES DE ACAO NO LADO DIREITO -->
                             <div class="flex items-center gap-2 shrink-0">
                                 ${isAvailable ? `
                                     <a href="${file.url}" target="_blank" onclick="window.showToast('Download iniciado/Abrindo Link.')" class="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-dark-700 hover:bg-brand-500 hover:text-white text-zinc-700 dark:text-white transition-colors cursor-pointer">
