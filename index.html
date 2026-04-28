@@ -58,10 +58,20 @@
         .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
         .pt-safe { padding-top: env(safe-area-inset-top); }
 
+        /* Estilos padrão de Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
         .dark ::-webkit-scrollbar-thumb { background: #27272a; }
+
+        /* Nova classe para ocultar scrollbars na galeria mobile estilo Netflix */
+        .hide-scrollbars {
+            -ms-overflow-style: none; /* IE e Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+        .hide-scrollbars::-webkit-scrollbar {
+            display: none; /* Chrome, Safari e Opera */
+        }
 
         .fade-in { animation: fadeIn 0.3s ease-out forwards; }
         @keyframes fadeIn {
@@ -499,7 +509,7 @@
             }
         }
 
-        // --- NOVO: REGISTAR DOWNLOAD DE PACOTE DE ENTREGA ---
+        // --- REGISTAR DOWNLOAD DE PACOTE DE ENTREGA ---
         window.registarDownloadFicheiro = async function(index) {
             // Se o admin clica, não queremos marcar como "O cliente baixou", apenas se o cliente clicar.
             if (state.isAdmin) return; 
@@ -819,7 +829,7 @@
             if(!state.isAdmin) return;
             e.dataTransfer.setData('text/plain', index);
             e.dataTransfer.effectAllowed = 'move';
-            // Efeito visual no elemento arrastado (timeout para não afetar o "fantasma" nativo de arraste)
+            // Efeito visual no elemento arrastado
             setTimeout(() => e.target.classList.add('opacity-40'), 10);
         };
 
@@ -853,14 +863,12 @@
             if(!draggedIndexStr) return;
             
             const draggedIndex = parseInt(draggedIndexStr);
-            // Previne erro ao largar no mesmo local ou item inválido
             if(draggedIndex === targetIndex || isNaN(draggedIndex)) return;
 
             // Reordenar a array localmente
             const draggedItem = state.project.images.splice(draggedIndex, 1)[0];
             state.project.images.splice(targetIndex, 0, draggedItem);
             
-            // Renderizar instantaneamente a nova ordem para melhor UX
             window.renderApp();
             window.showToast("A guardar nova ordem...", "info");
 
@@ -869,7 +877,6 @@
                 const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
                 const imgsRef = collection(db, "projetos", clientEmail, "imagens_apresentacao");
                 
-                // Atualiza todas as imagens em paralelo para estabelecer a nova propriedade 'order'
                 const promises = state.project.images.map((img, idx) => {
                     img.order = idx; 
                     return setDoc(doc(imgsRef, img.name), { order: idx }, { merge: true });
@@ -1355,12 +1362,12 @@
             if (state.project.images && state.project.images.length > 0) {
                 state.project.images.forEach((img, index) => {
                     const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
-                    const downloadBadge = isDownloaded ? `<div class="absolute top-2 left-2 px-2 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente"><i class="ph-bold ph-check text-[12px]"></i> <span class="text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span></div>` : '';
+                    const downloadBadge = isDownloaded ? `<div class="absolute top-3 left-3 md:top-2 md:left-2 px-2.5 md:px-2 h-7 md:h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente"><i class="ph-bold ph-check text-[14px] md:text-[12px]"></i> <span class="text-[11px] md:text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span></div>` : '';
 
-                    const expandIconPos = state.isAdmin ? 'right-[44px]' : 'right-2';
+                    const expandIconPos = state.isAdmin ? 'right-[56px] md:right-[44px]' : 'right-3 md:right-2';
                     const deleteBtn = state.isAdmin ? `
-                        <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
-                            <i class="ph-bold ph-x text-[14px]"></i>
+                        <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-3 right-3 md:top-2 md:right-2 w-10 h-10 md:w-8 md:h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
+                            <i class="ph-bold ph-x text-[16px] md:text-[14px]"></i>
                         </button>
                     ` : '';
 
@@ -1376,24 +1383,28 @@
 
                     const cursorClass = state.isAdmin ? 'cursor-move' : 'cursor-pointer';
 
+                    // Aqui implementamos a visualização Netflix no Mobile (aspect ratio vertical e peek-through layout) 
                     gridImagens += `
-                        <div ${dragProps} class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group ${cursorClass} aspect-square relative transition-all hover:scale-[1.02] shadow-sm" onclick="window.handleImageClick(event, ${index})">
+                        <div ${dragProps} class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-2xl md:rounded-xl overflow-hidden group ${cursorClass} flex-none w-[75vw] sm:w-[45vw] md:w-auto aspect-[4/5] md:aspect-square snap-start md:snap-align-none relative transition-all md:hover:scale-[1.02] shadow-lg md:shadow-sm" onclick="window.handleImageClick(event, ${index})">
                             ${downloadBadge}
                             ${deleteBtn}
                             <!-- pointer-events-none para não interferir no dragleave do elemento pai -->
                             <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover pointer-events-none">
-                            <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                <span class="text-[10px] md:text-xs text-white font-medium truncate w-full">${img.name}</span>
+                            
+                            <!-- Degrade Fundo Escuro Permanente no Mobile, Hover no Desktop -->
+                            <div class="absolute inset-x-0 bottom-0 h-1/2 flex items-end p-4 md:p-2 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity pointer-events-none">
+                                <span class="text-sm md:text-xs text-white font-medium truncate w-full shadow-black drop-shadow-md">${img.name}</span>
                             </div>
-                            <div class="absolute top-2 ${expandIconPos} w-8 h-8 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 hover:bg-black/80 pointer-events-none">
-                                <i class="ph ph-arrows-out text-white text-xs"></i>
+                            
+                            <div class="absolute top-3 md:top-2 ${expandIconPos} w-10 h-10 md:w-8 md:h-8 rounded-full bg-black/40 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 hover:bg-black/80 pointer-events-none border border-white/20 md:border-none shadow-md">
+                                <i class="ph ph-arrows-out text-white text-base md:text-xs"></i>
                             </div>
                         </div>
                     `;
                 });
             } else {
                 gridImagens = `
-                    <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-5 text-center py-12 md:py-20 border-2 border-dashed border-zinc-200 dark:border-dark-700 rounded-2xl">
+                    <div class="w-full shrink-0 flex-none md:col-span-4 lg:col-span-5 text-center py-12 md:py-20 border-2 border-dashed border-zinc-200 dark:border-dark-700 rounded-2xl">
                         <i class="ph ph-image text-4xl text-zinc-300 dark:text-dark-600 mb-3"></i>
                         <p class="text-zinc-500 dark:text-zinc-400 font-medium">As imagens da apresentação aparecerão aqui.</p>
                         ${state.isAdmin ? '<p class="text-xs text-brand-500 mt-2">Use o painel acima para enviar as imagens.</p>' : ''}
@@ -1493,6 +1504,7 @@
                 </div>
             `;
 
+            // Note na div de galeria abaixo: Adicionado classes "flex md:grid overflow-x-auto hide-scrollbars snap-x snap-mandatory" para o modo Mobile.
             return `
                 ${adminUploadUI} 
 
@@ -1556,7 +1568,8 @@
                         ${galeriaAdminActions}
                     </div>
                     
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 mb-10">
+                    <!-- Container Alterado (Comportamento Carrossel no Mobile e Grelha no PC) -->
+                    <div class="flex md:grid overflow-x-auto md:overflow-visible snap-x snap-mandatory hide-scrollbars gap-4 md:gap-4 md:grid-cols-4 lg:grid-cols-5 mb-10 pb-6 md:pb-0 -mx-5 px-5 md:mx-0 md:px-0 scroll-px-5 md:scroll-px-0 relative">
                         ${gridImagens}
                     </div>
                     
