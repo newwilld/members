@@ -8,10 +8,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Portal do Cliente | Wa Comercial</title>
     
-    <script src="https://cdn.tailwindcss.com">
-    </script>
-    <script src="https://unpkg.com/@phosphor-icons/web">
-    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <script>
@@ -60,10 +58,20 @@
         .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
         .pt-safe { padding-top: env(safe-area-inset-top); }
 
+        /* Estilos padrão de Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
         .dark ::-webkit-scrollbar-thumb { background: #27272a; }
+
+        /* Nova classe para ocultar scrollbars na galeria mobile estilo Netflix */
+        .hide-scrollbars {
+            -ms-overflow-style: none; /* IE e Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+        .hide-scrollbars::-webkit-scrollbar {
+            display: none; /* Chrome, Safari e Opera */
+        }
 
         .fade-in { animation: fadeIn 0.3s ease-out forwards; }
         @keyframes fadeIn {
@@ -126,76 +134,12 @@
             opacity: 0.8;
             box-shadow: 0 0 15px rgba(20, 184, 166, 0.4);
         }
-
-        /* NOVO: Estilos do Carrossel Mobile Netflix-Style */
-        .netflix-carousel {
-            display: flex;
-            overflow-x: auto;
-            scroll-snap-type: x mandatory;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none;  /* IE and Edge */
-            padding: 0 4vw; /* Espaçamento lateral para revelar as metades */
-            gap: 4vw;
-        }
-        .netflix-carousel::-webkit-scrollbar {
-            display: none; /* Chrome, Safari, Opera */
-        }
-        .netflix-carousel-item {
-            flex: none;
-            scroll-snap-align: center;
-            width: 80vw; /* A imagem ocupa 80% da largura da tela */
-            max-width: 400px; /* Limite máximo para não ficar muito grande */
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 10px 20px -5px rgba(0,0,0,0.3);
-            transition: transform 0.2s;
-            position: relative;
-            aspect-ratio: 2/3; /* Proporção de poster de filme */
-            background-color: #27272a; /* Cor de fundo enquanto carrega */
-        }
-        .dark .netflix-carousel-item {
-            box-shadow: 0 10px 20px -5px rgba(0,0,0,0.8);
-        }
-        .netflix-carousel-item img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            pointer-events: none; /* Evita arrastar a imagem em vez do carrossel */
-        }
-        
-        /* Indicador de paginação estilo Netflix */
-        .netflix-pagination {
-            display: flex;
-            justify-content: center;
-            gap: 6px;
-            margin-top: 16px;
-        }
-        .netflix-pagination-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 3px;
-            background-color: #d4d4d8;
-            transition: all 0.3s ease;
-        }
-        .dark .netflix-pagination-dot {
-            background-color: #3f3f46;
-        }
-        .netflix-pagination-dot.active {
-            width: 20px;
-            background-color: #14b8a6;
-        }
-        .dark .netflix-pagination-dot.active {
-            background-color: #14b8a6;
-        }
     </style>
 </head>
 <body class="overflow-x-hidden bg-zinc-50 dark:bg-dark-900 text-zinc-900 dark:text-zinc-100 selection:bg-brand-500 selection:text-white transition-colors duration-300">
 
-    <div id="app" class="min-h-[100dvh] w-full flex flex-col md:flex-row pt-safe">
-    </div>
-    <div id="toast-container">
-    </div>
+    <div id="app" class="min-h-[100dvh] w-full flex flex-col md:flex-row pt-safe"></div>
+    <div id="toast-container"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -243,13 +187,11 @@
                 deliveryFiles: [],
                 revisoes: [],
                 downloadedImages: [],
-                downloadedFiles: [] 
+                downloadedFiles: [] // Array para guardar os ficheiros baixados
             },
             allClients: [],
             galleryIndex: 0,
-            adminSelectedClientForRevision: null,
-            // NOVO: Estado para controlar o índice visual do carrossel mobile
-            carouselActiveIndex: 0 
+            adminSelectedClientForRevision: null
         };
 
         // --- COMPRESSÃO DE IMAGENS ---
@@ -282,6 +224,7 @@
         async function fetchClientData(emailToFetch) {
             try {
                 state.currentClientEmail = emailToFetch;
+
                 const docRef = doc(db, "projetos", emailToFetch);
                 const docSnap = await getDoc(docRef);
                 
@@ -303,6 +246,7 @@
                 const snapshot = await getDocs(imgsRef);
                 const loadedImages = snapshot.docs.map(doc => doc.data());
                 
+                // Ordenar primeiro pelo campo `order` personalizado, depois pelo nome
                 loadedImages.sort((a, b) => {
                     if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
                     if (a.order !== undefined) return -1;
@@ -311,7 +255,6 @@
                 });
                 
                 state.project.images = loadedImages;
-                state.carouselActiveIndex = 0; // Reset ao carregar novas imagens
 
             } catch (error) {
                 console.error("Erro ao buscar dados do Firebase:", error);
@@ -411,10 +354,6 @@
             } else {
                 app.innerHTML = getDashboardTemplate();
                 renderMainContent();
-                // Após renderizar, se estivermos na dashboard, inicializar o carrossel
-                if (state.currentTab === 'dashboard') {
-                    setTimeout(initNetflixCarousel, 100);
-                }
             }
         }
 
@@ -430,11 +369,13 @@
             if (e) e.preventDefault();
             const emailInput = document.getElementById('email-input');
             const email = emailInput ? emailInput.value.trim() : '';
+
             if(!email) {
                 window.showToast('Escreva o seu e-mail no campo acima e clique novamente em "Esqueceu a senha?".', 'info');
                 if (emailInput) emailInput.focus();
                 return;
             }
+
             try {
                 window.showToast('A enviar e-mail de recuperação...', 'info');
                 await sendPasswordResetEmail(auth, email);
@@ -447,6 +388,7 @@
 
         window.openTrocarSenha = function(e) {
             if (e) e.preventDefault();
+            
             const modalHTML = `
                 <div id="modal-trocar-senha" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm fade-in px-4">
                     <div class="bg-white dark:bg-dark-900 w-full max-w-sm p-6 sm:p-8 rounded-3xl shadow-xl relative border border-zinc-200 dark:border-dark-700">
@@ -481,19 +423,23 @@
                 </div>
             `;
             document.body.insertAdjacentHTML('beforeend', modalHTML);
+
             document.getElementById('form-trocar-senha').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = document.getElementById('ts-email').value;
                 const oldPw = document.getElementById('ts-old-pw').value;
                 const newPw = document.getElementById('ts-new-pw').value;
                 const btn = document.getElementById('btn-submit-ts');
+                
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-lg"></i> A processar...';
                 btn.disabled = true;
+
                 try {
                     window.showToast("A validar credenciais...", "info");
                     const userCredential = await signInWithEmailAndPassword(auth, email, oldPw);
                     await updatePassword(userCredential.user, newPw);
+                    
                     window.showToast("Senha atualizada com sucesso!", "success");
                     document.getElementById('modal-trocar-senha').remove();
                 } catch (error) {
@@ -507,6 +453,7 @@
 
         // --- GALERIA DE IMAGENS E DOWNLOAD ---
         window.handleImageClick = function(event, index) {
+            // Evita que o clique seja disparado ao largar numa zona de drag (Admin)
             if (state.isAdmin && event.target.closest('.drag-over')) return;
             window.verConceitoFull(index);
         };
@@ -519,6 +466,7 @@
         window.baixarImagemAtual = async function(index) {
             const img = state.project.images[index];
             if(!img) return;
+
             const link = document.createElement('a');
             link.href = img.url;
             link.download = img.name || 'imagem_wacomercial.jpg';
@@ -527,21 +475,27 @@
             document.body.removeChild(link);
 
             let clientEmail = state.isAdmin ? (state.adminSelectedClientForRevision || document.getElementById('target-client-email')?.value) : state.user.email;
+            
             if(clientEmail) {
                 try {
                     const docRef = doc(db, "projetos", clientEmail.trim().toLowerCase());
                     const docSnap = await getDoc(docRef);
                     let downloaded = [];
+                    
                     if(docSnap.exists() && docSnap.data().downloadedImages) {
                         downloaded = docSnap.data().downloadedImages;
                     }
+                    
                     if(!downloaded.includes(img.name)) {
                         downloaded.push(img.name);
                         await setDoc(docRef, { downloadedImages: downloaded }, { merge: true });
+                        
                         state.project.downloadedImages = downloaded;
-                        window.renderApp();
+                        window.renderApp(); // Atualiza os emblemas na grelha de imagens ao fundo
                     }
+                    
                     window.showToast("Download realizado e gravado no sistema!", "success");
+                    
                     const btn = document.getElementById('btn-download-modal');
                     if(btn) {
                         btn.innerHTML = '<i class="ph-bold ph-check text-xl"></i> Baixada com sucesso';
@@ -555,24 +509,32 @@
             }
         }
 
+        // --- REGISTAR DOWNLOAD DE PACOTE DE ENTREGA ---
         window.registarDownloadFicheiro = async function(index) {
+            // Se o admin clica, não queremos marcar como "O cliente baixou", apenas se o cliente clicar.
             if (state.isAdmin) return; 
+
             const file = state.project.deliveryFiles[index];
             if(!file) return;
+
             let clientEmail = state.user.email;
+            
             if(clientEmail) {
                 try {
                     const docRef = doc(db, "projetos", clientEmail.trim().toLowerCase());
                     const docSnap = await getDoc(docRef);
                     let downloaded = [];
+                    
                     if(docSnap.exists() && docSnap.data().downloadedFiles) {
                         downloaded = docSnap.data().downloadedFiles;
                     }
+                    
                     if(!downloaded.includes(file.name)) {
                         downloaded.push(file.name);
                         await setDoc(docRef, { downloadedFiles: downloaded }, { merge: true });
+                        
                         state.project.downloadedFiles = downloaded;
-                        window.renderApp();
+                        window.renderApp(); // Atualiza a badge "Baixado"
                     }
                 } catch (error) {
                     console.error("Erro ao registar download do ficheiro:", error);
@@ -587,6 +549,7 @@
                 modal.id = 'gallery-modal';
                 modal.className = "fixed inset-0 z-[999] bg-black/95 flex items-center justify-center fade-in touch-none flex-col";
                 document.body.appendChild(modal);
+                
                 let touchstartX = 0;
                 let touchendX = 0;
                 modal.addEventListener('touchstart', e => { 
@@ -598,6 +561,7 @@
                     touchendX = e.changedTouches[0].screenX;
                     handleSwipe();
                 });
+
                 function handleSwipe() {
                     const threshold = 50;
                     if (touchendX < touchstartX - threshold) window.nextImage();
@@ -607,7 +571,10 @@
 
             const img = state.project.images[state.galleryIndex];
             const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
-            const btnStyles = isDownloaded ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30" : "bg-brand-500 hover:bg-brand-600 shadow-brand-500/30";
+            
+            const btnStyles = isDownloaded 
+                ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30" 
+                : "bg-brand-500 hover:bg-brand-600 shadow-brand-500/30";
             const btnIcon = isDownloaded ? "ph-check" : "ph-download-simple";
             const btnText = isDownloaded ? "Baixada com sucesso" : "Baixar Imagem";
 
@@ -615,19 +582,24 @@
                 <button onclick="window.closeGallery()" class="absolute top-4 right-4 md:top-8 md:right-8 w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/40 hover:bg-black/60 border border-white/10 flex items-center justify-center text-white transition-colors z-[100] backdrop-blur-md">
                     <i class="ph ph-x text-xl md:text-2xl"></i>
                 </button>
+                
                 <button onclick="window.prevImage()" class="absolute left-2 md:left-8 top-1/2 -translate-y-1/2 w-10 h-10 md:w-16 md:h-16 rounded-full bg-black/30 hover:bg-black/50 border border-white/5 flex items-center justify-center text-white transition-colors z-[100] backdrop-blur-md ${state.galleryIndex === 0 ? 'opacity-30 cursor-not-allowed' : ''}">
                     <i class="ph ph-caret-left text-2xl md:text-4xl"></i>
                 </button>
+                
                 <button onclick="window.nextImage()" class="absolute right-2 md:right-8 top-1/2 -translate-y-1/2 w-10 h-10 md:w-16 md:h-16 rounded-full bg-black/30 hover:bg-black/50 border border-white/5 flex items-center justify-center text-white transition-colors z-[100] backdrop-blur-md ${state.galleryIndex === state.project.images.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}">
                     <i class="ph ph-caret-right text-2xl md:text-4xl"></i>
                 </button>
+
                 <div class="relative w-full h-full flex items-center justify-center p-0 md:p-12" id="gallery-img-container">
                     <img src="${img.url}" class="w-full h-full max-w-7xl max-h-none md:max-h-[85vh] object-contain md:rounded-lg slide-right" id="gallery-image">
+                    
                     <div class="absolute bottom-16 md:bottom-8 left-1/2 -translate-x-1/2 fade-in w-max z-[100]">
                         <button id="btn-download-modal" onclick="window.baixarImagemAtual(${state.galleryIndex})" class="flex items-center gap-2 ${btnStyles} text-white px-6 md:px-8 py-3 rounded-full font-bold shadow-lg transition-transform active:scale-95 text-sm md:text-base border border-white/10 backdrop-blur-sm">
                             <i class="ph-bold ${btnIcon} text-lg md:text-xl"></i> ${btnText}
                         </button>
                     </div>
+                    
                     <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-xs md:text-sm font-medium bg-black/60 px-4 py-1.5 rounded-full backdrop-blur-md z-[100] border border-white/10">
                         ${state.galleryIndex + 1} / ${state.project.images.length}
                     </div>
@@ -664,50 +636,6 @@
             }
         });
 
-        // --- NOVO: Funções do Carrossel Netflix ---
-        function initNetflixCarousel() {
-            const carousel = document.getElementById('netflix-carousel');
-            if (!carousel) return;
-            
-            // Atualizar dots e estado ao scrollar
-            const updateActiveIndex = () => {
-                const scrollLeft = carousel.scrollLeft;
-                const itemWidth = carousel.querySelector('.netflix-carousel-item')?.offsetWidth || carousel.offsetWidth * 0.8;
-                const gap = parseFloat(getComputedStyle(carousel).gap) || (carousel.offsetWidth * 0.04);
-                const index = Math.round(scrollLeft / (itemWidth + gap));
-                if (state.carouselActiveIndex !== index) {
-                    state.carouselActiveIndex = index;
-                    updatePaginationDots();
-                }
-            };
-
-            carousel.addEventListener('scroll', updateActiveIndex, { passive: true });
-            // Inicializar os dots na primeira carga
-            updatePaginationDots();
-        }
-
-        function updatePaginationDots() {
-            const dots = document.querySelectorAll('.netflix-pagination-dot');
-            dots.forEach((dot, idx) => {
-                if (idx === state.carouselActiveIndex) {
-                    dot.classList.add('active');
-                } else {
-                    dot.classList.remove('active');
-                }
-            });
-        }
-
-        window.scrollToCarouselItem = function(index) {
-            const carousel = document.getElementById('netflix-carousel');
-            if (!carousel) return;
-            const items = carousel.querySelectorAll('.netflix-carousel-item');
-            if (items[index]) {
-                items[index].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-                state.carouselActiveIndex = index;
-                updatePaginationDots();
-            }
-        }
-
         // --- LÓGICA DE APROVAÇÃO DO CLIENTE ---
         window.aprovarProjeto = async function() {
             if(state.isAdmin) {
@@ -721,6 +649,7 @@
                     email: state.user.email,
                     approvedAt: new Date().toISOString()
                 }, { merge: true });
+                
                 state.project.approved = true;
                 window.showToast('Projeto Aprovado! Ficheiros finais desbloqueados.', 'success');
                 window.changeTab('arquivos');
@@ -734,11 +663,13 @@
         window.enviarRevisao = async function() {
             const textarea = document.getElementById('texto-revisao');
             if(!textarea) return;
+            
             const texto = textarea.value.trim();
             if(!texto) {
                 window.showToast('Escreva a sua solicitação antes de enviar.', 'error');
                 return;
             }
+
             let clientEmail = '';
             if(state.isAdmin) {
                 if(state.adminSelectedClientForRevision) {
@@ -750,21 +681,28 @@
             } else {
                 clientEmail = state.user.email;
             }
+
             window.showToast("A enviar mensagem...", "info");
+            
             const novaRevisao = {
                 texto: texto,
                 data: new Date().toISOString(),
                 autor: state.isAdmin ? 'Wa Comercial' : 'Cliente'
             };
+
             try {
                 const docRef = doc(db, "projetos", clientEmail);
                 const docSnap = await getDoc(docRef);
+                
                 let revisoes = [];
                 if(docSnap.exists() && docSnap.data().revisoes) {
                     revisoes = docSnap.data().revisoes;
                 }
+                
                 revisoes.push(novaRevisao);
+
                 await setDoc(docRef, { revisoes: revisoes, email: clientEmail }, { merge: true });
+                
                 state.project.revisoes = revisoes;
                 textarea.value = '';
                 window.renderApp();
@@ -785,6 +723,7 @@
             window.showToast('A procurar projeto...', 'info');
             await fetchClientData(clientEmail);
             window.renderApp();
+            
             setTimeout(() => {
                 const input = document.getElementById('target-client-email');
                 if(input) input.value = clientEmail;
@@ -800,26 +739,35 @@
                 window.showToast('Por favor, informe o e-mail do cliente destino.', 'error');
                 return;
             }
+
             files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
             window.showToast(`A processar e enviar ${files.length} imagens...`, 'info');
+            
             const btnUpload = document.getElementById('btn-upload-label');
             btnUpload.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-lg"></i> A Enviar...';
+
             try {
                 await setDoc(doc(db, "projetos", clientEmail), { email: clientEmail }, { merge: true });
+                
                 const imgsRef = collection(db, "projetos", clientEmail, "imagens_apresentacao");
                 const startIndex = state.project.images ? state.project.images.length : 0;
+
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const base64Data = await compressImage(file, 1200);
+                    // Guarda o ficheiro com uma ordem default incremental
                     await setDoc(doc(imgsRef, file.name), { name: file.name, url: base64Data, order: startIndex + i });
                 }
+
                 await fetchClientData(clientEmail);
                 await fetchAllClients(); 
                 window.renderApp();
+                
                 setTimeout(() => {
                     const input = document.getElementById('target-client-email');
                     if(input) input.value = clientEmail;
                 }, 50);
+
                 window.showToast('Imagens guardadas com sucesso na base de dados!', 'success');
             } catch (error) {
                 console.error(error);
@@ -833,12 +781,16 @@
         window.apagarImagem = async function(e, fileName) {
             e.stopPropagation(); 
             if(!state.isAdmin) return;
+            
             if(!confirm("Tem certeza que deseja apagar esta imagem?")) return;
+
             const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
             if(!clientEmail) return;
+
             try {
                 window.showToast("A apagar imagem...", "info");
                 await deleteDoc(doc(db, "projetos", clientEmail, "imagens_apresentacao", fileName));
+                
                 state.project.images = state.project.images.filter(img => img.name !== fileName);
                 window.renderApp();
                 window.showToast("Imagem apagada com sucesso!", "success");
@@ -851,14 +803,18 @@
         window.apagarTodasImagens = async function() {
             if(!state.isAdmin) return;
             if(!state.project.images || state.project.images.length === 0) return;
+            
             if(!confirm("Tem certeza que deseja apagar TODAS as imagens deste cliente? Esta ação não pode ser desfeita.")) return;
+
             const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
             if(!clientEmail) return;
+
             try {
                 window.showToast("A apagar todas as imagens...", "info");
                 for (let img of state.project.images) {
                     await deleteDoc(doc(db, "projetos", clientEmail, "imagens_apresentacao", img.name));
                 }
+                
                 state.project.images = [];
                 window.renderApp();
                 window.showToast("Todas as imagens foram apagadas!", "success");
@@ -873,6 +829,7 @@
             if(!state.isAdmin) return;
             e.dataTransfer.setData('text/plain', index);
             e.dataTransfer.effectAllowed = 'move';
+            // Efeito visual no elemento arrastado
             setTimeout(() => e.target.classList.add('opacity-40'), 10);
         };
 
@@ -885,6 +842,7 @@
             e.preventDefault();
             if(!state.isAdmin) return;
             e.dataTransfer.dropEffect = 'move';
+            
             const target = e.currentTarget;
             if(!target.classList.contains('drag-over')) {
                 target.classList.add('drag-over');
@@ -898,22 +856,32 @@
         window.handleDrop = async function(e, targetIndex) {
             e.preventDefault();
             if(!state.isAdmin) return;
+            
             e.currentTarget.classList.remove('drag-over');
+            
             const draggedIndexStr = e.dataTransfer.getData('text/plain');
             if(!draggedIndexStr) return;
+            
             const draggedIndex = parseInt(draggedIndexStr);
             if(draggedIndex === targetIndex || isNaN(draggedIndex)) return;
+
+            // Reordenar a array localmente
             const draggedItem = state.project.images.splice(draggedIndex, 1)[0];
             state.project.images.splice(targetIndex, 0, draggedItem);
+            
             window.renderApp();
             window.showToast("A guardar nova ordem...", "info");
+
+            // Guardar no Firestore
             try {
                 const clientEmail = state.currentClientEmail || document.getElementById('target-client-email').value.trim().toLowerCase();
                 const imgsRef = collection(db, "projetos", clientEmail, "imagens_apresentacao");
+                
                 const promises = state.project.images.map((img, idx) => {
                     img.order = idx; 
                     return setDoc(doc(imgsRef, img.name), { order: idx }, { merge: true });
                 });
+                
                 await Promise.all(promises);
                 window.showToast("Ordem guardada com sucesso!", "success");
             } catch (error) {
@@ -928,8 +896,10 @@
             const clientEmail = document.getElementById('delivery-email').value.trim().toLowerCase();
             const name = document.getElementById('delivery-name').value;
             const link = document.getElementById('delivery-link').value;
+
             try {
                 window.showToast("A adicionar ficheiro de entrega...", "info");
+                
                 const novoFicheiro = {
                     name: name,
                     url: link,
@@ -938,13 +908,17 @@
                     color: "text-brand-500",
                     bg: "bg-brand-50 dark:bg-brand-500/10"
                 };
+
                 const docRef = doc(db, "projetos", clientEmail);
                 const docSnap = await getDoc(docRef);
                 let atuais = [];
                 if(docSnap.exists() && docSnap.data().deliveryFiles) atuais = docSnap.data().deliveryFiles;
+                
                 atuais.push(novoFicheiro);
+
                 await setDoc(docRef, { deliveryFiles: atuais, email: clientEmail }, { merge: true });
                 window.showToast("Ficheiro adicionado com sucesso!", "success");
+                
                 if(clientEmail === document.getElementById('delivery-email').value) {
                     await fetchClientData(clientEmail);
                     window.renderApp();
@@ -961,12 +935,16 @@
                 window.showToast("Erro: Nenhum cliente selecionado.", "error");
                 return;
             }
+
             try {
                 window.showToast("A apagar ficheiro...", "info");
+                
                 const atuais = [...state.project.deliveryFiles];
                 atuais.splice(index, 1);
+
                 const docRef = doc(db, "projetos", clientEmail);
                 await setDoc(docRef, { deliveryFiles: atuais }, { merge: true });
+                
                 state.project.deliveryFiles = atuais;
                 window.renderApp();
                 window.showToast("Ficheiro apagado com sucesso!", "success");
@@ -980,18 +958,24 @@
         window.toggleClientApproval = async function(e, email, currentStatus) {
             if (e) e.stopPropagation(); 
             if (!state.isAdmin) return;
+
             const newStatus = !currentStatus;
+            
             try {
                 window.showToast("A alterar status...", "info");
+                
                 const docRef = doc(db, "projetos", email);
                 await setDoc(docRef, { approved: newStatus }, { merge: true });
+                
                 const clientIndex = state.allClients.findIndex(c => c.email === email);
                 if(clientIndex !== -1) {
                     state.allClients[clientIndex].approved = newStatus;
                 }
+                
                 if(state.currentClientEmail === email || state.adminSelectedClientForRevision === email) {
                     state.project.approved = newStatus;
                 }
+
                 window.renderApp();
                 window.showToast(`Status alterado para ${newStatus ? 'Aprovado' : 'Pendente'}.`, "success");
             } catch (error) {
@@ -1033,10 +1017,12 @@
                                     <input type="password" id="password-input" placeholder="A sua senha" class="w-full bg-white dark:bg-dark-900/80 border border-zinc-200 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3.5 pl-11 pr-4 focus:outline-none focus:border-brand-500 text-sm shadow-sm dark:shadow-none" required>
                                 </div>
                             </div>
+                            
                             <div class="flex items-center justify-between px-1 mt-1">
                                 <a href="#" onclick="window.openTrocarSenha(event)" class="text-xs text-zinc-500 dark:text-zinc-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors">Trocar senha</a>
                                 <a href="#" onclick="window.recuperarSenha(event)" class="text-xs font-medium text-brand-600 dark:text-brand-500 hover:underline">Esqueceu a senha?</a>
                             </div>
+
                             <button type="submit" id="btn-login" class="w-full bg-brand-500 text-white font-medium py-3.5 rounded-xl transition-all active:scale-95 shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 mt-2 sm:mt-4 hover:bg-brand-600">
                                 Entrar no Portal <i class="ph ph-arrow-right font-bold"></i>
                             </button>
@@ -1057,6 +1043,7 @@
                     const originalText = btn.innerHTML;
                     btn.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-xl"></i> A autenticar...';
                     btn.classList.add('opacity-80', 'cursor-not-allowed', 'scale-95');
+                    
                     try {
                         await signInWithEmailAndPassword(auth, email, password);
                         window.showToast('Acesso autorizado!', 'success');
@@ -1072,6 +1059,7 @@
         function getDashboardTemplate() {
             const themeIcon = state.theme === 'light' ? 'ph-moon' : 'ph-sun';
             const badgeAdmin = state.isAdmin ? `<span class="bg-brand-500 text-white text-[9px] px-1.5 py-0.5 rounded ml-2 font-bold uppercase tracking-wider">Admin</span>` : '';
+
             return `
                 <nav class="fixed bottom-0 w-full md:w-64 md:h-[100dvh] bg-white dark:bg-dark-900 md:border-r border-t md:border-t-0 border-zinc-200 dark:border-dark-700 z-50 flex flex-row md:flex-col justify-between md:justify-start pb-safe md:pb-0 transition-colors">
                     <div class="hidden md:flex items-center gap-3 p-6 border-b border-zinc-200 dark:border-dark-700">
@@ -1083,11 +1071,13 @@
                             <p class="text-[10px] text-brand-500 font-bold uppercase">Área VIP</p>
                         </div>
                     </div>
+
                     <div class="flex flex-row md:flex-col w-full px-1 py-1 md:px-4 md:py-6 gap-1 md:gap-2">
                         ${getNavButton('dashboard', 'Visão Geral', 'ph-squares-four')}
                         ${getNavButton('arquivos', 'Arquivos', 'ph-folder')}
                         ${getNavButton('revisoes', 'Revisões', 'ph-chats-circle')}
                     </div>
+
                     <div class="hidden md:block mt-auto p-4 border-t border-zinc-200 dark:border-dark-700">
                         <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-dark-800 transition-colors cursor-pointer group" onclick="window.logout()">
                             <div class="w-9 h-9 rounded-full bg-zinc-100 dark:bg-dark-900 border border-zinc-200 dark:border-dark-700 flex items-center justify-center group-hover:border-brand-500 transition-colors">
@@ -1101,8 +1091,10 @@
                         </div>
                     </div>
                 </nav>
+
                 <main class="flex-1 md:ml-64 w-full min-h-[100dvh] flex flex-col bg-zinc-50 dark:bg-dark-900 relative transition-colors">
                     <header class="h-16 md:h-20 border-b border-zinc-200 dark:border-dark-700 px-4 md:px-8 flex items-center justify-between sticky top-0 bg-white/90 dark:bg-dark-900/90 backdrop-blur-lg z-40">
+                        
                         <div class="flex items-center gap-3 md:hidden" onclick="window.logout()">
                              <div class="w-8 h-8 rounded-full bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 flex items-center justify-center">
                                 <span class="text-[10px] font-bold text-zinc-700 dark:text-zinc-300">${state.user.name.charAt(0).toUpperCase()}</span>
@@ -1112,10 +1104,12 @@
                                 <span class="text-[10px] text-red-500 dark:text-red-400">Sair</span>
                             </div>
                         </div>
+                        
                         <div class="hidden md:block">
                             <h2 class="text-xl font-bold text-zinc-900 dark:text-white tracking-tight" id="header-title-desk">Visão Geral</h2>
                             <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Acompanhe a evolução do seu projeto.</p>
                         </div>
+
                         <div class="flex items-center gap-2 md:gap-4">
                             <button onclick="window.toggleTheme()" class="w-10 h-10 rounded-full bg-zinc-100 md:bg-transparent dark:bg-dark-800 dark:md:bg-transparent border border-transparent md:border-zinc-200 dark:md:border-dark-700 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-white active:scale-90 transition-all">
                                 <i class="ph-fill ${themeIcon} text-lg"></i>
@@ -1126,6 +1120,7 @@
                             </a>
                         </div>
                     </header>
+
                     <div id="main-content" class="p-4 md:p-8 max-w-6xl mx-auto w-full flex-1 pb-24 md:pb-8 fade-in"></div>
                 </main>
             `;
@@ -1134,7 +1129,9 @@
         function getNavButton(id, label, icon) {
             const isActive = state.currentTab === id;
             const baseClass = "flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 py-2 md:py-3.5 px-1 md:px-4 rounded-xl transition-all md:w-full select-none";
-            const activeClass = isActive ? "text-brand-600 bg-brand-50 md:border md:border-brand-200 dark:text-brand-500 dark:bg-brand-500/10 dark:md:border-brand-500/20" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:text-zinc-500 dark:hover:text-zinc-300 dark:active:bg-dark-800";
+            const activeClass = isActive 
+                ? "text-brand-600 bg-brand-50 md:border md:border-brand-200 dark:text-brand-500 dark:bg-brand-500/10 dark:md:border-brand-500/20" 
+                : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:text-zinc-500 dark:hover:text-zinc-300 dark:active:bg-dark-800";
             return `
                 <button onclick="window.changeTab('${id}')" class="${baseClass} ${activeClass}">
                     <i class="ph ${icon} text-[22px] md:text-xl ${isActive ? 'ph-fill' : ''}"></i>
@@ -1146,32 +1143,35 @@
         function renderMainContent() {
             const container = document.getElementById('main-content');
             const headerTitleDesk = document.getElementById('header-title-desk');
+            
             container.classList.remove('fade-in');
             void container.offsetWidth;
             container.classList.add('fade-in');
+
             const titles = { 'dashboard': 'Visão Geral do Projeto', 'arquivos': 'Meus Arquivos', 'revisoes': 'Centro de Revisões' };
             if(headerTitleDesk) headerTitleDesk.innerText = titles[state.currentTab];
+
             let mobileTitleHTML = `<h2 class="text-xl font-bold text-zinc-900 dark:text-white mb-4 md:hidden">${titles[state.currentTab]}</h2>`;
+
             switch(state.currentTab) {
                 case 'dashboard': container.innerHTML = mobileTitleHTML + getOverviewContent(); break;
                 case 'arquivos': container.innerHTML = mobileTitleHTML + getFilesContent(); break;
                 case 'revisoes': container.innerHTML = mobileTitleHTML + getRevisoesContent(); break;
             }
-            // Inicializa o carrossel se a aba dashboard for renderizada
-            if (state.currentTab === 'dashboard') {
-                setTimeout(initNetflixCarousel, 100);
-            }
         }
 
         function getRevisoesContent() {
             let listaRevisoesHTML = '';
+            
             if(state.project.revisoes && state.project.revisoes.length > 0) {
                 listaRevisoesHTML = state.project.revisoes.map(rev => {
                     const isClient = rev.autor === 'Cliente';
+                    
                     let nomeAutor = rev.autor;
                     if(nomeAutor === 'Estúdio' || nomeAutor === 'WaComercial') {
                         nomeAutor = 'Wa Comercial';
                     }
+
                     return `
                         <div class="mb-4 p-4 rounded-2xl ${isClient ? 'bg-zinc-100 dark:bg-dark-800 ml-auto w-[90%] md:w-[75%]' : 'bg-brand-50 dark:bg-brand-500/10 mr-auto w-[90%] md:w-[75%]'} border border-zinc-200 dark:border-dark-700 shadow-sm">
                             <div class="flex justify-between items-center mb-2">
@@ -1190,6 +1190,7 @@
                     </div>
                 `;
             }
+
             const inputArea = `
                 <div class="mt-auto pt-4 border-t border-zinc-200 dark:border-dark-700">
                     <label class="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Novo Ajuste / Mensagem</label>
@@ -1199,6 +1200,7 @@
                     </button>
                 </div>
             `;
+
             if (state.isAdmin) {
                 return `
                     <div class="flex flex-col lg:flex-row gap-6 mb-6">
@@ -1212,13 +1214,16 @@
                                         <div onclick="window.selectClientForRevision('${c.email}')" class="cursor-pointer p-3.5 rounded-xl border ${state.adminSelectedClientForRevision === c.email ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/10 shadow-sm' : 'border-zinc-200 dark:border-dark-700 bg-white dark:bg-dark-800/50 hover:border-brand-300 dark:hover:border-brand-700'} flex flex-col gap-2 transition-all">
                                             <span class="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate w-full" title="${c.email}">${c.email}</span>
                                             <div class="flex justify-end">
-                                                ${c.approved ? `<button onclick="window.toggleClientApproval(event, '${c.email}', true)" class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-check-circle"></i> Aprovado</button>` : `<button onclick="window.toggleClientApproval(event, '${c.email}', false)" class="flex items-center gap-1.5 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-clock"></i> Pendente</button>`}
+                                                ${c.approved 
+                                                    ? `<button onclick="window.toggleClientApproval(event, '${c.email}', true)" class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-check-circle"></i> Aprovado</button>` 
+                                                    : `<button onclick="window.toggleClientApproval(event, '${c.email}', false)" class="flex items-center gap-1.5 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-clock"></i> Pendente</button>`}
                                             </div>
                                         </div>
                                     `).join('') || '<p class="text-xs text-zinc-500">Nenhum cliente registado.</p>'}
                                 </div>
                             </div>
                         </div>
+
                         <div class="w-full lg:w-2/3">
                             <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 h-[600px] flex flex-col relative">
                                 ${state.adminSelectedClientForRevision ? `
@@ -1228,9 +1233,11 @@
                                     <div class="mb-6">
                                         <span class="text-xs font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 px-3 py-1.5 rounded-lg border border-brand-200 dark:border-brand-500/20 inline-block">${state.adminSelectedClientForRevision}</span>
                                     </div>
+                                    
                                     <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar mb-4">
                                         ${listaRevisoesHTML}
                                     </div>
+                                    
                                     ${inputArea}
                                 ` : `
                                     <div class="h-full flex flex-col items-center justify-center text-center py-12 opacity-70">
@@ -1246,15 +1253,18 @@
                     </div>
                 `;
             }
+
             return `
                 <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 mb-6 relative min-h-[500px] flex flex-col">
                     <h3 class="text-lg md:text-xl font-bold text-zinc-900 dark:text-white mb-2 flex items-center gap-2">
                         <i class="ph-fill ph-chats-circle text-brand-500"></i> Solicitações de Ajuste
                     </h3>
                     <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Deixe as suas sugestões ou pedidos de alteração. Iremos analisar o mais rapidamente possível.</p>
+                    
                     <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar mb-4">
                         ${listaRevisoesHTML}
                     </div>
+                    
                     ${inputArea}
                 </div>
             `;
@@ -1268,12 +1278,15 @@
                     listaAprovacoes = state.allClients.map(c => `
                         <div class="flex items-center justify-between p-3 rounded-xl border border-zinc-200 dark:border-dark-700 bg-white dark:bg-dark-800/50 mb-2">
                             <span class="text-sm font-medium text-zinc-800 dark:text-zinc-200">${c.email}</span>
-                            ${c.approved ? `<button onclick="window.toggleClientApproval(event, '${c.email}', true)" class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-md text-xs font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-check-circle"></i> Aprovado</button>` : `<button onclick="window.toggleClientApproval(event, '${c.email}', false)" class="flex items-center gap-1.5 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-md text-xs font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-clock"></i> Pendente</button>`}
+                            ${c.approved 
+                                ? `<button onclick="window.toggleClientApproval(event, '${c.email}', true)" class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-md text-xs font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-check-circle"></i> Aprovado</button>` 
+                                : `<button onclick="window.toggleClientApproval(event, '${c.email}', false)" class="flex items-center gap-1.5 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-md text-xs font-bold uppercase cursor-pointer hover:opacity-80 transition-opacity" title="Clique para alterar status"><i class="ph-fill ph-clock"></i> Pendente</button>`}
                         </div>
                     `).join('');
                 } else {
                     listaAprovacoes = '<p class="text-xs text-zinc-500">Nenhum cliente registado ainda.</p>';
                 }
+
                 adminUploadUI = `
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                         <div class="lg:col-span-2 glass-panel border border-brand-500/30 rounded-2xl p-5 md:p-6 bg-brand-50 dark:bg-brand-500/10">
@@ -1282,6 +1295,7 @@
                                 <h4 class="text-lg font-bold text-zinc-900 dark:text-white">Gerir Apresentação Visual</h4>
                             </div>
                             <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-5">Pesquise o e-mail de um cliente para ver as suas imagens ou adicione novas à apresentação do mesmo.</p>
+                            
                             <div class="flex flex-col sm:flex-row gap-4 items-end">
                                 <div class="flex-1 w-full relative">
                                     <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">E-mail do Cliente</label>
@@ -1289,12 +1303,14 @@
                                     <input type="email" id="target-client-email" placeholder="cliente@email.com" class="w-full bg-white dark:bg-dark-900 border border-zinc-300 dark:border-dark-700 text-zinc-900 dark:text-white rounded-xl py-3 pl-11 pr-24 focus:outline-none focus:border-brand-500 text-sm shadow-sm dark:shadow-none">
                                     <button onclick="window.loadClientImages()" class="absolute right-2 bottom-2 bg-zinc-100 dark:bg-dark-800 text-zinc-700 dark:text-zinc-300 text-xs px-3 py-1.5 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-dark-700 transition-colors">Procurar</button>
                                 </div>
+                                
                                 <label for="image-upload-input" id="btn-upload-label" class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white w-full sm:w-auto px-6 py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-brand-500/20 whitespace-nowrap">
                                     <i class="ph ph-upload-simple text-lg"></i> Adicionar Imagens
                                 </label>
                                 <input type="file" id="image-upload-input" multiple accept="image/*" class="hidden" onchange="window.handleImageUpload(event)">
                             </div>
                         </div>
+
                         <div class="glass-panel border border-zinc-200 dark:border-dark-700 rounded-2xl p-5 md:p-6 bg-white dark:bg-dark-900 overflow-hidden flex flex-col h-full max-h-[220px]">
                             <h4 class="text-sm font-bold text-zinc-900 dark:text-white mb-3 uppercase tracking-wider flex items-center gap-2">
                                 <i class="ph-fill ph-check-circle text-brand-500"></i> Status dos Projetos
@@ -1342,135 +1358,102 @@
                 </div>
             `;
 
-            // NOVO: Container da Galeria Mobile/Desktop
-            let gallerySectionHTML = '';
+            let gridImagens = '';
             if (state.project.images && state.project.images.length > 0) {
-                // Construir items do carrossel
-                let carouselItemsHTML = state.project.images.map((img, index) => {
+                state.project.images.forEach((img, index) => {
                     const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
-                    const downloadBadge = isDownloaded ? 
-                        `<div class="absolute top-2 left-2 px-2 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente">
-                            <i class="ph-bold ph-check text-[12px]"></i> <span class="text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span>
-                        </div>` : '';
-                    return `
-                        <div class="netflix-carousel-item relative group cursor-pointer" onclick="window.handleImageClick(event, ${index})">
+                    const downloadBadge = isDownloaded ? `<div class="absolute top-3 left-3 md:top-2 md:left-2 px-2.5 md:px-2 h-7 md:h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente"><i class="ph-bold ph-check text-[14px] md:text-[12px]"></i> <span class="text-[11px] md:text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span></div>` : '';
+
+                    const expandIconPos = state.isAdmin ? 'right-[56px] md:right-[44px]' : 'right-3 md:right-2';
+                    const deleteBtn = state.isAdmin ? `
+                        <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-3 right-3 md:top-2 md:right-2 w-10 h-10 md:w-8 md:h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
+                            <i class="ph-bold ph-x text-[16px] md:text-[14px]"></i>
+                        </button>
+                    ` : '';
+
+                    // Adição dos atributos para Drag and Drop
+                    const dragProps = state.isAdmin ? `
+                        draggable="true"
+                        ondragstart="window.handleDragStart(event, ${index})"
+                        ondragend="window.handleDragEnd(event)"
+                        ondragover="window.handleDragOver(event)"
+                        ondragleave="window.handleDragLeave(event)"
+                        ondrop="window.handleDrop(event, ${index})"
+                    ` : '';
+
+                    const cursorClass = state.isAdmin ? 'cursor-move' : 'cursor-pointer';
+
+                    // Aqui implementamos a visualização Netflix no Mobile (aspect ratio vertical e peek-through layout) 
+                    gridImagens += `
+                        <div ${dragProps} class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-2xl md:rounded-xl overflow-hidden group ${cursorClass} flex-none w-[75vw] sm:w-[45vw] md:w-auto aspect-[4/5] md:aspect-square snap-start md:snap-align-none relative transition-all md:hover:scale-[1.02] shadow-lg md:shadow-sm" onclick="window.handleImageClick(event, ${index})">
                             ${downloadBadge}
-                            <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover">
-                            <div class="absolute inset-0 flex items-end p-3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span class="text-xs text-white font-medium truncate w-full">${img.name}</span>
+                            ${deleteBtn}
+                            <!-- pointer-events-none para não interferir no dragleave do elemento pai -->
+                            <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover pointer-events-none">
+                            
+                            <!-- Degrade Fundo Escuro Permanente no Mobile, Hover no Desktop -->
+                            <div class="absolute inset-x-0 bottom-0 h-1/2 flex items-end p-4 md:p-2 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity pointer-events-none">
+                                <span class="text-sm md:text-xs text-white font-medium truncate w-full shadow-black drop-shadow-md">${img.name}</span>
+                            </div>
+                            
+                            <div class="absolute top-3 md:top-2 ${expandIconPos} w-10 h-10 md:w-8 md:h-8 rounded-full bg-black/40 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 hover:bg-black/80 pointer-events-none border border-white/20 md:border-none shadow-md">
+                                <i class="ph ph-arrows-out text-white text-base md:text-xs"></i>
                             </div>
                         </div>
                     `;
-                }).join('');
+                });
+            } else {
+                gridImagens = `
+                    <div class="w-full shrink-0 flex-none md:col-span-4 lg:col-span-5 text-center py-12 md:py-20 border-2 border-dashed border-zinc-200 dark:border-dark-700 rounded-2xl">
+                        <i class="ph ph-image text-4xl text-zinc-300 dark:text-dark-600 mb-3"></i>
+                        <p class="text-zinc-500 dark:text-zinc-400 font-medium">As imagens da apresentação aparecerão aqui.</p>
+                        ${state.isAdmin ? '<p class="text-xs text-brand-500 mt-2">Use o painel acima para enviar as imagens.</p>' : ''}
+                    </div>
+                `;
+            }
 
-                // Construir dots de paginação
-                let paginationDotsHTML = state.project.images.map((_, idx) => `
-                    <div class="netflix-pagination-dot ${idx === state.carouselActiveIndex ? 'active' : ''}" onclick="window.scrollToCarouselItem(${idx})"></div>
-                `).join('');
+            let galeriaAdminActions = '';
+            if (state.isAdmin && state.project.images && state.project.images.length > 0) {
+                galeriaAdminActions = `
+                    <div class="flex items-center gap-2">
+                        <span class="hidden md:flex text-xs text-zinc-400 dark:text-zinc-500 mr-2 items-center gap-1"><i class="ph ph-arrows-out-cardinal"></i> Arraste para ordenar</span>
+                        <button onclick="window.apagarTodasImagens()" class="text-[11px] md:text-xs bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 font-semibold active:scale-95">
+                            <i class="ph-bold ph-trash"></i> Apagar Todas
+                        </button>
+                    </div>
+                `;
+            }
 
-                // Wrapper diferente para mobile vs desktop
-                gallerySectionHTML = `
-                    <div class="mb-4">
-                        <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-6 gap-3">
-                            <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-image text-brand-500"></i> Galeria da Marca</h4>
-                            ${state.isAdmin ? `
-                                <div class="flex items-center gap-2">
-                                    <button onclick="window.apagarTodasImagens()" class="text-[11px] md:text-xs bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 font-semibold active:scale-95">
-                                        <i class="ph-bold ph-trash"></i> Apagar Todas
-                                    </button>
-                                </div>
-                            ` : ''}
+            let decisionBlock = '';
+            if(state.project.approved) {
+                decisionBlock = `
+                    <div class="border border-emerald-200 dark:border-emerald-500/30 rounded-2xl md:rounded-3xl p-6 flex flex-col items-center justify-center text-center bg-emerald-50 dark:bg-emerald-500/5 mt-8 shadow-sm">
+                        <div class="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-500">
+                            <i class="ph-fill ph-check-circle text-3xl"></i>
                         </div>
-
-                        <!-- Container Netflix MOBILE (visível apenas em telas pequenas) -->
-                        <div class="md:hidden w-full -mx-4">
-                            <div id="netflix-carousel" class="netflix-carousel">
-                                ${carouselItemsHTML}
-                            </div>
-                            <div class="netflix-pagination mt-4 mb-2">
-                                ${paginationDotsHTML}
-                            </div>
-                        </div>
-
-                        <!-- Grid Desktop (visível apenas em md para cima) -->
-                        <div class="hidden md:grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 mb-10">
-                            ${state.project.images.map((img, index) => {
-                                const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
-                                const downloadBadge = isDownloaded ? 
-                                    `<div class="absolute top-2 left-2 px-2 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente">
-                                        <i class="ph-bold ph-check text-[12px]"></i> <span class="text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span>
-                                    </div>` : '';
-                                const deleteBtn = state.isAdmin ? `
-                                    <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
-                                        <i class="ph-bold ph-x text-[14px]"></i>
-                                    </button>
-                                ` : '';
-                                const dragProps = state.isAdmin ? `
-                                    draggable="true"
-                                    ondragstart="window.handleDragStart(event, ${index})"
-                                    ondragend="window.handleDragEnd(event)"
-                                    ondragover="window.handleDragOver(event)"
-                                    ondragleave="window.handleDragLeave(event)"
-                                    ondrop="window.handleDrop(event, ${index})"
-                                ` : '';
-                                const cursorClass = state.isAdmin ? 'cursor-move' : 'cursor-pointer';
-                                return `
-                                    <div ${dragProps} class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-xl overflow-hidden group ${cursorClass} aspect-square relative transition-all hover:scale-[1.02] shadow-sm" onclick="window.handleImageClick(event, ${index})">
-                                        ${downloadBadge}
-                                        ${deleteBtn}
-                                        <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover pointer-events-none">
-                                        <div class="absolute inset-0 flex items-end p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                            <span class="text-[10px] md:text-xs text-white font-medium truncate w-full">${img.name}</span>
-                                        </div>
-                                        <div class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10 hover:bg-black/80 pointer-events-none">
-                                            <i class="ph ph-arrows-out text-white text-xs"></i>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                        
-                        ${state.project.approved ? `
-                            <div class="border border-emerald-200 dark:border-emerald-500/30 rounded-2xl md:rounded-3xl p-6 flex flex-col items-center justify-center text-center bg-emerald-50 dark:bg-emerald-500/5 mt-8 shadow-sm">
-                                <div class="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-500">
-                                    <i class="ph-fill ph-check-circle text-3xl"></i>
-                                </div>
-                                <h5 class="font-bold text-emerald-700 dark:text-emerald-400 text-lg">Projeto Aprovado!</h5>
-                                <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-2">Os seus ficheiros finais de alta qualidade encontram-se disponíveis na aba <b>Arquivos</b>.</p>
-                                <button onclick="window.changeTab('arquivos')" class="mt-4 px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl active:scale-95 transition-all shadow-md flex items-center gap-2">
-                                    <i class="ph ph-folder"></i> Ir para Meus Arquivos
-                                </button>
-                            </div>
-                        ` : `
-                            <div class="border border-brand-200 dark:border-brand-500/30 rounded-2xl md:rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center text-center bg-brand-50 dark:bg-brand-500/5 mt-8 shadow-sm dark:shadow-lg relative overflow-hidden">
-                                <div class="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent pointer-events-none"></div>
-                                <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-brand-100 dark:bg-brand-500/20 flex items-center justify-center mb-4 border border-brand-200 dark:border-brand-500/30 relative z-10">
-                                    <i class="ph-fill ph-thumbs-up text-2xl md:text-3xl text-brand-600 dark:text-brand-500"></i>
-                                </div>
-                                <h5 class="font-bold text-zinc-900 dark:text-white text-lg md:text-xl mb-2 relative z-10">O que achou do resultado?</h5>
-                                <p class="text-sm md:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md relative z-10">Após visualizar todos os itens acima, caso o projeto atenda às suas expectativas, clique em aprovar para aceder imediatamente aos seus ficheiros finais.</p>
-                                <div class="flex flex-col sm:flex-row gap-3 md:gap-4 w-full max-w-lg justify-center relative z-10">
-                                    <button onclick="window.aprovarProjeto()" class="w-full sm:w-auto px-8 py-4 bg-brand-500 text-white text-sm md:text-base font-bold rounded-xl active:scale-95 transition-all shadow-[0_0_20px_rgba(20,184,166,0.3)] hover:shadow-[0_0_30px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2">
-                                        <i class="ph ph-check-circle text-xl"></i> Aprovar Projeto
-                                    </button>
-                                    <button onclick="window.changeTab('revisoes')" class="w-full sm:w-auto px-8 py-4 bg-white dark:bg-dark-800 text-zinc-700 dark:text-white text-sm md:text-base font-semibold rounded-xl active:scale-95 transition-all border border-zinc-200 dark:border-dark-600 hover:bg-zinc-50 dark:hover:bg-dark-700 flex items-center justify-center gap-2 shadow-sm dark:shadow-none">
-                                        <i class="ph ph-pencil-simple text-xl"></i> Solicitar Ajuste
-                                    </button>
-                                </div>
-                            </div>
-                        `}
+                        <h5 class="font-bold text-emerald-700 dark:text-emerald-400 text-lg">Projeto Aprovado!</h5>
+                        <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-2">Os seus ficheiros finais de alta qualidade encontram-se disponíveis na aba <b>Arquivos</b>.</p>
+                        <button onclick="window.changeTab('arquivos')" class="mt-4 px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl active:scale-95 transition-all shadow-md flex items-center gap-2">
+                            <i class="ph ph-folder"></i> Ir para Meus Arquivos
+                        </button>
                     </div>
                 `;
             } else {
-                gallerySectionHTML = `
-                    <div class="mb-4">
-                        <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-6 gap-3">
-                            <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-image text-brand-500"></i> Galeria da Marca</h4>
+                decisionBlock = `
+                    <div class="border border-brand-200 dark:border-brand-500/30 rounded-2xl md:rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center text-center bg-brand-50 dark:bg-brand-500/5 mt-8 shadow-sm dark:shadow-lg relative overflow-hidden">
+                        <div class="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent pointer-events-none"></div>
+                        <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-brand-100 dark:bg-brand-500/20 flex items-center justify-center mb-4 border border-brand-200 dark:border-brand-500/30 relative z-10">
+                            <i class="ph-fill ph-thumbs-up text-2xl md:text-3xl text-brand-600 dark:text-brand-500"></i>
                         </div>
-                        <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-5 text-center py-12 md:py-20 border-2 border-dashed border-zinc-200 dark:border-dark-700 rounded-2xl">
-                            <i class="ph ph-image text-4xl text-zinc-300 dark:text-dark-600 mb-3"></i>
-                            <p class="text-zinc-500 dark:text-zinc-400 font-medium">As imagens da apresentação aparecerão aqui.</p>
-                            ${state.isAdmin ? '<p class="text-xs text-brand-500 mt-2">Use o painel acima para enviar as imagens.</p>' : ''}
+                        <h5 class="font-bold text-zinc-900 dark:text-white text-lg md:text-xl mb-2 relative z-10">O que achou do resultado?</h5>
+                        <p class="text-sm md:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md relative z-10">Após visualizar todos os itens acima, caso o projeto atenda às suas expectativas, clique em aprovar para aceder imediatamente aos seus ficheiros finais.</p>
+                        <div class="flex flex-col sm:flex-row gap-3 md:gap-4 w-full max-w-lg justify-center relative z-10">
+                            <button onclick="window.aprovarProjeto()" class="w-full sm:w-auto px-8 py-4 bg-brand-500 text-white text-sm md:text-base font-bold rounded-xl active:scale-95 transition-all shadow-[0_0_20px_rgba(20,184,166,0.3)] hover:shadow-[0_0_30px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2">
+                                <i class="ph ph-check-circle text-xl"></i> Aprovar Projeto
+                            </button>
+                            <button onclick="window.changeTab('revisoes')" class="w-full sm:w-auto px-8 py-4 bg-white dark:bg-dark-800 text-zinc-700 dark:text-white text-sm md:text-base font-semibold rounded-xl active:scale-95 transition-all border border-zinc-200 dark:border-dark-600 hover:bg-zinc-50 dark:hover:bg-dark-700 flex items-center justify-center gap-2 shadow-sm dark:shadow-none">
+                                <i class="ph ph-pencil-simple text-xl"></i> Solicitar Ajuste
+                            </button>
                         </div>
                     </div>
                 `;
@@ -1483,6 +1466,7 @@
                             📚 Materiais Extras <span class="text-[10px] bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400 px-2 py-1 rounded-md uppercase tracking-wide">Eleve sua marca</span>
                         </h4>
                     </div>
+                    
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div class="glass-panel p-5 rounded-2xl border border-zinc-200 dark:border-dark-700 hover:border-brand-300 dark:hover:border-brand-700 transition-colors group flex flex-col h-full">
                             <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-4 text-blue-500">
@@ -1520,8 +1504,10 @@
                 </div>
             `;
 
+            // Note na div de galeria abaixo: Adicionado classes "flex md:grid overflow-x-auto hide-scrollbars snap-x snap-mandatory" para o modo Mobile.
             return `
                 ${adminUploadUI} 
+
                 <div class="glass-panel rounded-2xl md:rounded-3xl p-5 md:p-8 mb-6 md:mb-8 relative overflow-hidden">
                     <div class="absolute -top-10 -right-10 w-48 h-48 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
                     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 mb-8 relative z-10">
@@ -1545,15 +1531,23 @@
                             </div>
                         </div>
                     </div>
+
                     <div class="flex justify-between items-start relative z-10 px-1">
                         <div class="absolute top-[14px] md:top-5 left-[10%] right-[10%] h-[2px] bg-zinc-200 dark:bg-dark-700 -z-10"></div>
                         <div class="absolute top-[14px] md:top-5 left-[10%] h-[2px] bg-brand-500 -z-10 shadow-[0_0_8px_rgba(20,184,166,0.6)] transition-all duration-1000" style="width: ${state.project.approved ? '80%' : '50%'}"></div>
                         ${state.project.stages.map((stage, index) => {
                             let isPast = index < currentStageClass;
                             let isCurrent = index === currentStageClass;
-                            let bgClass = isPast ? "bg-brand-50 border-brand-500 text-brand-600 dark:bg-brand-500/20 dark:text-brand-500" : isCurrent ? "bg-brand-500 border-brand-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.4)]" : "bg-zinc-50 border-zinc-300 text-zinc-400 dark:bg-dark-900 dark:border-dark-700 dark:text-zinc-600";
+                            
+                            let bgClass = isPast 
+                                ? "bg-brand-50 border-brand-500 text-brand-600 dark:bg-brand-500/20 dark:text-brand-500" 
+                                : isCurrent 
+                                ? "bg-brand-500 border-brand-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.4)]" 
+                                : "bg-zinc-50 border-zinc-300 text-zinc-400 dark:bg-dark-900 dark:border-dark-700 dark:text-zinc-600";
+                                
                             let icon = isPast ? "ph-check" : isCurrent ? "ph-spinner-gap animate-spin" : "ph-circle";
                             let textClass = (isPast || isCurrent) ? "text-zinc-800 dark:text-zinc-200 font-semibold" : "text-zinc-400 dark:text-zinc-500 font-medium";
+                            
                             return `
                                 <div class="flex flex-col items-center gap-1.5 md:gap-2 relative bg-transparent w-16 md:w-24">
                                     <div class="w-7 h-7 md:w-10 md:h-10 rounded-full border-2 flex items-center justify-center transition-all ${bgClass}">
@@ -1565,9 +1559,24 @@
                         }).join('')}
                     </div>
                 </div>
+
                 ${balaoInformativo}
-                ${gallerySectionHTML}
-                ${upsellBlock}
+
+                <div class="mb-4">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-6 gap-3">
+                        <h4 class="text-base md:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><i class="ph-fill ph-image text-brand-500"></i> Galeria da Marca</h4>
+                        ${galeriaAdminActions}
+                    </div>
+                    
+                    <!-- Container Alterado (Comportamento Carrossel no Mobile e Grelha no PC) -->
+                    <div class="flex md:grid overflow-x-auto md:overflow-visible snap-x snap-mandatory hide-scrollbars gap-4 md:gap-4 md:grid-cols-4 lg:grid-cols-5 mb-10 pb-6 md:pb-0 -mx-5 px-5 md:mx-0 md:px-0 scroll-px-5 md:scroll-px-0 relative">
+                        ${gridImagens}
+                    </div>
+                    
+                    ${decisionBlock}
+                    
+                    ${upsellBlock}
+                </div>
             `;
         }
 
@@ -1581,6 +1590,7 @@
                             <h4 class="text-lg font-bold text-zinc-900 dark:text-white">Gerir Ficheiros Finais</h4>
                         </div>
                         <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-5">Adicione o link externo (Google Drive, Dropbox, WeTransfer) do pacote final de entrega para um cliente. <br/><b>Os clientes apenas poderão descarregar se o projeto estiver Aprovado.</b></p>
+                        
                         <form onsubmit="window.adicionarFicheiroEntrega(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                             <div class="relative md:col-span-1">
                                 <label class="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase">E-mail Cliente</label>
@@ -1606,11 +1616,17 @@
 
             let filesListHTML = '';
             const files = state.project.deliveryFiles || [];
+
             if(files.length > 0) {
                 filesListHTML = files.map((file, index) => {
                     const isAvailable = state.project.approved || state.isAdmin;
+                    
+                    // Verifica se o ficheiro já foi baixado pelo cliente
                     const isDownloaded = state.project.downloadedFiles && state.project.downloadedFiles.includes(file.name);
-                    const badgeBaixado = isDownloaded ? `<span class="text-emerald-600 dark:text-emerald-500 font-bold flex items-center gap-0.5 bg-emerald-100 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded ml-2 uppercase text-[9px] tracking-wider" title="O cliente já acedeu a este ficheiro"><i class="ph-bold ph-check-circle"></i> Baixado</span>` : '';
+                    const badgeBaixado = isDownloaded 
+                        ? `<span class="text-emerald-600 dark:text-emerald-500 font-bold flex items-center gap-0.5 bg-emerald-100 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded ml-2 uppercase text-[9px] tracking-wider" title="O cliente já acedeu a este ficheiro"><i class="ph-bold ph-check-circle"></i> Baixado</span>` 
+                        : '';
+
                     return `
                         <div class="flex items-center justify-between p-3 md:p-4 rounded-xl border border-zinc-100 dark:border-dark-700 bg-zinc-50 dark:bg-dark-800/40 ${isAvailable ? 'hover:bg-zinc-100 dark:hover:bg-dark-800' : 'opacity-60'} transition-colors">
                             <div class="flex items-center gap-3 md:gap-4 overflow-hidden">
@@ -1622,10 +1638,13 @@
                                     <div class="flex items-center gap-2 text-[10px] md:text-xs mt-0.5">
                                         <span class="text-zinc-500 font-medium">${file.size || 'Link Nuvem'}</span>
                                         <span class="w-1 h-1 rounded-full bg-zinc-300 dark:bg-dark-600"></span>
-                                        ${isAvailable ? `<span class="text-brand-600 dark:text-brand-500 font-semibold flex items-center gap-1"><i class="ph-fill ph-check-circle"></i> Liberado</span> ${badgeBaixado}` : '<span class="text-amber-600 dark:text-amber-500 flex items-center gap-1"><i class="ph-fill ph-lock-key"></i> Aguarda Aprovação</span>'}
+                                        ${isAvailable 
+                                            ? `<span class="text-brand-600 dark:text-brand-500 font-semibold flex items-center gap-1"><i class="ph-fill ph-check-circle"></i> Liberado</span> ${badgeBaixado}` 
+                                            : '<span class="text-amber-600 dark:text-amber-500 flex items-center gap-1"><i class="ph-fill ph-lock-key"></i> Aguarda Aprovação</span>'}
                                     </div>
                                 </div>
                             </div>
+                            
                             <div class="flex items-center gap-2 shrink-0">
                                 ${isAvailable ? `
                                     <a href="${file.url}" target="_blank" onclick="window.registarDownloadFicheiro(${index}); window.showToast('Download iniciado/Abrindo Link.')" class="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-dark-700 hover:bg-brand-500 hover:text-white text-zinc-700 dark:text-white transition-colors cursor-pointer">
@@ -1636,6 +1655,7 @@
                                         <i class="ph-fill ph-lock-key text-base md:text-lg"></i>
                                     </div>
                                 `}
+                                
                                 ${state.isAdmin ? `
                                     <button onclick="window.apagarFicheiroEntrega(${index})" class="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-red-100 dark:bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 transition-colors cursor-pointer" title="Apagar Ficheiro">
                                         <i class="ph ph-x text-base md:text-lg font-bold"></i>
