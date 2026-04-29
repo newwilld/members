@@ -187,7 +187,8 @@
                 deliveryFiles: [],
                 revisoes: [],
                 downloadedImages: [],
-                downloadedFiles: [] // Array para guardar os ficheiros baixados
+                downloadedFiles: [], // Array para guardar os ficheiros baixados
+                viewedImages: [] // NOVO: Array para guardar imagens visualizadas pelo cliente
             },
             allClients: [],
             galleryIndex: 0,
@@ -234,12 +235,14 @@
                     state.project.revisoes = docSnap.data().revisoes || [];
                     state.project.downloadedImages = docSnap.data().downloadedImages || [];
                     state.project.downloadedFiles = docSnap.data().downloadedFiles || [];
+                    state.project.viewedImages = docSnap.data().viewedImages || []; // NOVO: Puxar histórico de visualização
                 } else {
                     state.project.approved = false;
                     state.project.deliveryFiles = [];
                     state.project.revisoes = [];
                     state.project.downloadedImages = [];
                     state.project.downloadedFiles = [];
+                    state.project.viewedImages = [];
                 }
 
                 const imgsRef = collection(db, "projetos", emailToFetch, "imagens_apresentacao");
@@ -263,6 +266,7 @@
                 state.project.revisoes = [];
                 state.project.downloadedImages = [];
                 state.project.downloadedFiles = [];
+                state.project.viewedImages = [];
             }
         }
 
@@ -463,6 +467,31 @@
             renderGalleryModal();
         }
 
+        // --- NOVO: REGISTRAR VISUALIZAÇÃO DE IMAGEM ---
+        window.registrarVisualizacaoImagem = async function(index) {
+            // Apenas regista se quem abriu foi o Cliente, o admin não conta como visualização.
+            if (state.isAdmin) return;
+
+            const img = state.project.images[index];
+            if (!img) return;
+
+            let clientEmail = state.user.email;
+            if (clientEmail) {
+                try {
+                    let viewed = state.project.viewedImages || [];
+                    if (!viewed.includes(img.name)) {
+                        viewed.push(img.name);
+                        state.project.viewedImages = viewed; // Atualiza estado local imediatamente
+
+                        const docRef = doc(db, "projetos", clientEmail.trim().toLowerCase());
+                        await setDoc(docRef, { viewedImages: viewed }, { merge: true });
+                    }
+                } catch (error) {
+                    console.error("Erro ao registar visualização:", error);
+                }
+            }
+        }
+
         window.baixarImagemAtual = async function(index) {
             const img = state.project.images[index];
             if(!img) return;
@@ -567,6 +596,11 @@
                     if (touchendX < touchstartX - threshold) window.nextImage();
                     if (touchendX > touchstartX + threshold) window.prevImage();
                 }
+            }
+
+            // Regista que a imagem está a ser visualizada pelo cliente neste exato momento (se aplicável)
+            if (!state.isAdmin) {
+                window.registrarVisualizacaoImagem(state.galleryIndex);
             }
 
             const img = state.project.images[state.galleryIndex];
@@ -1364,6 +1398,13 @@
                     const isDownloaded = state.project.downloadedImages && state.project.downloadedImages.includes(img.name);
                     const downloadBadge = isDownloaded ? `<div class="absolute top-3 left-3 md:top-2 md:left-2 px-2.5 md:px-2 h-7 md:h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1" title="Baixada pelo cliente"><i class="ph-bold ph-check text-[14px] md:text-[12px]"></i> <span class="text-[11px] md:text-[10px] font-bold uppercase tracking-wider hidden md:inline">Baixada</span></div>` : '';
 
+                    // NOVO: Emblema de Visualização (Apenas visível para Admin e se a imagem estiver no histórico de visualizações)
+                    const isViewed = state.project.viewedImages && state.project.viewedImages.includes(img.name);
+                    const viewTop = isDownloaded ? 'top-12 md:top-9' : 'top-3 md:top-2'; // Empurra para baixo se houver o badge de Download
+                    const viewBadge = (state.isAdmin && isViewed) 
+                        ? `<div class="absolute ${viewTop} left-3 md:left-2 px-2.5 md:px-2 h-7 md:h-6 rounded-full bg-blue-500/95 flex items-center justify-center text-white shadow-md z-10 pointer-events-none gap-1 backdrop-blur-sm border border-blue-400/30" title="Imagem visualizada pelo cliente na galeria"><i class="ph-bold ph-eye text-[14px] md:text-[12px]"></i> <span class="text-[11px] md:text-[10px] font-bold uppercase tracking-wider hidden md:inline">Visto</span></div>` 
+                        : '';
+
                     const expandIconPos = state.isAdmin ? 'right-[56px] md:right-[44px]' : 'right-3 md:right-2';
                     const deleteBtn = state.isAdmin ? `
                         <button onclick="window.apagarImagem(event, '${img.name}')" class="absolute top-3 right-3 md:top-2 md:right-2 w-10 h-10 md:w-8 md:h-8 rounded-full bg-red-500/90 hover:bg-red-600 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all z-20 backdrop-blur-sm shadow-md" title="Apagar Imagem">
@@ -1387,6 +1428,7 @@
                     gridImagens += `
                         <div ${dragProps} class="bg-zinc-100 dark:bg-dark-800 border border-zinc-200 dark:border-dark-700 rounded-2xl md:rounded-xl overflow-hidden group ${cursorClass} flex-none w-[75vw] sm:w-[45vw] md:w-auto aspect-[4/5] md:aspect-square snap-start md:snap-align-none relative transition-all md:hover:scale-[1.02] shadow-lg md:shadow-sm" onclick="window.handleImageClick(event, ${index})">
                             ${downloadBadge}
+                            ${viewBadge}
                             ${deleteBtn}
                             <!-- pointer-events-none para não interferir no dragleave do elemento pai -->
                             <img src="${img.url}" alt="${img.name}" class="w-full h-full object-cover pointer-events-none">
